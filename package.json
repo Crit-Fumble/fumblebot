@@ -1,0 +1,102 @@
+{
+  "name": "fumblebot",
+  "version": "1.0.0",
+  "description": "FumbleBot - AI-powered Discord bot with integrated FoundryVTT management",
+  "keywords": [
+    "discord",
+    "bot",
+    "ai",
+    "anthropic",
+    "foundry-vtt",
+    "docker",
+    "ttrpg",
+    "gaming"
+  ],
+  "author": "Crit-Fumble",
+  "license": "MIT",
+  "homepage": "https://fumblebot.crit-fumble.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crit-fumble/fumblebot.git"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./discord": {
+      "types": "./dist/discord/index.d.ts",
+      "import": "./dist/discord/index.js"
+    },
+    "./ai": {
+      "types": "./dist/ai/index.d.ts",
+      "import": "./dist/ai/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "activity:dev": "tsx src/discord/activity/server.ts",
+    "activity:start": "node dist/discord/activity/server.js",
+    "clean": "rm -rf dist",
+    "test": "vitest --run",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage",
+    "test:ui": "vitest --ui",
+    "test:unit": "vitest --run --exclude src/integration/**",
+    "test:integration": "vitest --run src/integration",
+    "test:integration:watch": "vitest --watch src/integration",
+    "db:setup": "tsx scripts/setup-database.ts",
+    "db:generate": "prisma generate --schema=prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema=prisma/schema.prisma",
+    "db:migrate:prod": "prisma migrate deploy --schema=prisma/schema.prisma",
+    "db:push": "prisma db push --schema=prisma/schema.prisma",
+    "db:studio": "prisma studio --schema=prisma/schema.prisma",
+    "pre-generate": "tsx scripts/pre-generate-content.ts",
+    "pre-generate:behaviors": "tsx scripts/pre-generate-content.ts --behaviors-only",
+    "pre-generate:npcs": "tsx scripts/pre-generate-content.ts --npcs-only",
+    "pre-generate:tables": "tsx scripts/pre-generate-content.ts --tables-only",
+    "pre-generate:rules": "tsx scripts/pre-generate-content.ts --rules-only"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@auth/express": "^0.12.1",
+    "@discordjs/voice": "^0.17.0",
+    "@modelcontextprotocol/sdk": "^1.23.0",
+    "@prisma/client": "^6.8.2",
+    "cookie-parser": "^1.4.7",
+    "discord.js": "^14.16.3",
+    "dockerode": "^4.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-session": "^1.18.2",
+    "http-proxy-middleware": "^3.0.5",
+    "level": "^8.0.0",
+    "openai": "^4.73.0",
+    "playwright": "^1.57.0"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.0",
+    "@types/express-session": "^1.18.2",
+    "@types/node": "^22.19.1",
+    "@vitest/coverage-v8": "^4.0.14",
+    "@vitest/ui": "^4.0.14",
+    "prisma": "^6.8.2",
+    "tsx": "^4.19.4",
+    "typescript": "^5.6.3",
+    "vitest": "^4.0.14"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

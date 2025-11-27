@@ -1,0 +1,327 @@
+/**
+ * RPG Discord Commands
+ *
+ * Commands for accessing Core Concepts RPG data:
+ * - /rpg systems - List available RPG systems
+ * - /rpg creature <name> - Search for creatures/monsters
+ * - /rpg location <name> - Search for locations
+ * - /rpg lookup <query> - Rules lookup using Claude
+ *
+ * These commands call the MCP server tools directly for consistency.
+ */
+
+import {
+  SlashCommandBuilder,
+  ChatInputCommandInteraction,
+  EmbedBuilder,
+  AttachmentBuilder,
+} from 'discord.js';
+import type { CommandHandler } from '../types.js';
+import { FumbleBotMCPServer } from '../../../mcp/fumblebot-server.js';
+import { PrismaClient } from '@prisma/client';
+
+// Initialize MCP server with Prisma client
+const prisma = new PrismaClient();
+const mcpServer = new FumbleBotMCPServer(prisma);
+
+/**
+ * RPG Commands Handler
+ */
+const rpgCommand: CommandHandler = {
+  data: new SlashCommandBuilder()
+    .setName('rpg')
+    .setDescription('Access RPG systems, creatures, locations, and rules')
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('systems')
+        .setDescription('List available RPG systems')
+        .addBooleanOption((option) =>
+          option
+            .setName('core-only')
+            .setDescription('Only show core/featured systems')
+            .setRequired(false)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('creature')
+        .setDescription('Search for a creature or monster')
+        .addStringOption((option) =>
+          option
+            .setName('name')
+            .setDescription('Creature name to search for')
+            .setRequired(true)
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName('limit')
+            .setDescription('Maximum number of results (default: 5)')
+            .setRequired(false)
+            .setMinValue(1)
+            .setMaxValue(10)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('location')
+        .setDescription('Search for a location (world, dungeon, city, plane)')
+        .addStringOption((option) =>
+          option
+            .setName('name')
+            .setDescription('Location name to search for')
+            .setRequired(true)
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName('limit')
+            .setDescription('Maximum number of results (default: 5)')
+            .setRequired(false)
+            .setMinValue(1)
+            .setMaxValue(10)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('lookup')
+        .setDescription('Look up TTRPG rules using AI (Claude)')
+        .addStringOption((option) =>
+          option
+            .setName('query')
+            .setDescription('Rule question to look up')
+            .setRequired(true)
+        )
+        .addStringOption((option) =>
+          option
+            .setName('system')
+            .setDescription('Game system (default: D&D 5e)')
+            .setRequired(false)
+            .addChoices(
+              { name: 'D&D 5e', value: 'D&D 5e' },
+              { name: 'Pathfinder 2e', value: 'Pathfinder 2e' },
+              { name: 'Cypher System', value: 'Cypher System' },
+              { name: 'Call of Cthulhu', value: 'Call of Cthulhu' }
+            )
+        )
+    )
+    .setDMPermission(false) as SlashCommandBuilder,
+
+  async execute(interaction: ChatInputCommandInteraction) {
+    const subcommand = interaction.options.getSubcommand();
+
+    switch (subcommand) {
+      case 'systems':
+        return await handleSystems(interaction);
+      case 'creature':
+        return await handleCreature(interaction);
+      case 'location':
+        return await handleLocation(interaction);
+      case 'lookup':
+        return await handleLookup(interaction);
+      default:
+        await interaction.reply({
+          content: 'Unknown subcommand',
+          ephemeral: true,
+        });
+    }
+  },
+};
+
+/**
+ * Handle /rpg systems
+ */
+async function handleSystems(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply();
+
+  try {
+    const coreOnly = interaction.options.getBoolean('core-only') || false;
+
+    // Call MCP tool
+    const result = await (mcpServer as any).listRpgSystems({ coreOnly });
+    const systems = JSON.parse(result.content[0].text);
+
+    if (systems.length === 0) {
+      await interaction.editReply({
+        content: 'No RPG systems found.',
+      });
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x00ff00)
+      .setTitle(`📚 ${coreOnly ? 'Core' : 'All'} RPG Systems`)
+      .setDescription(`Found ${systems.length} system${systems.length === 1 ? '' : 's'}`)
+      .setTimestamp();
+
+    // Add fields for each system
+    for (const system of systems.slice(0, 10)) {
+      const platforms = Object.keys(system.platforms || {}).join(', ') || 'None';
+      embed.addFields({
+        name: `${system.isCore ? '⭐ ' : ''}${system.name}`,
+        value: `**ID:** \`${system.systemId}\`\n**Version:** ${system.version || 'N/A'}\n**Platforms:** ${platforms}`,
+        inline: true,
+      });
+    }
+
+    if (systems.length > 10) {
+      embed.setFooter({ text: `Showing 10 of ${systems.length} systems` });
+    }
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error in /rpg systems:', error);
+    await interaction.editReply({
+      content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+/**
+ * Handle /rpg creature
+ */
+async function handleCreature(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply();
+
+  try {
+    const name = interaction.options.getString('name', true);
+    const limit = interaction.options.getInteger('limit') || 5;
+
+    // Call MCP tool
+    const result = await (mcpServer as any).searchCreatures({ query: name, limit });
+    const creatures = JSON.parse(result.content[0].text);
+
+    if (creatures.length === 0) {
+      await interaction.editReply({
+        content: `No creatures found matching "${name}"`,
+      });
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0xff0000)
+      .setTitle(`🐉 Creature Search: "${name}"`)
+      .setDescription(`Found ${creatures.length} creature${creatures.length === 1 ? '' : 's'}`)
+      .setTimestamp();
+
+    // Add fields for each creature
+    for (const creature of creatures) {
+      const stats = creature.stats || {};
+      const cr = creature.cr || stats.cr || 'N/A';
+      const size = creature.size || stats.size || 'N/A';
+      const alignment = creature.alignment || stats.alignment || 'N/A';
+      const type = creature.creatureType || 'N/A';
+
+      const description =
+        creature.description && creature.description.length > 100
+          ? creature.description.substring(0, 100) + '...'
+          : creature.description || 'No description available';
+
+      embed.addFields({
+        name: creature.name,
+        value:
+          `**Type:** ${type} | **CR:** ${cr} | **Size:** ${size}\n` +
+          `**Alignment:** ${alignment}\n` +
+          `${description}\n` +
+          `_ID: \`${creature.id}\`_`,
+        inline: false,
+      });
+    }
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error in /rpg creature:', error);
+    await interaction.editReply({
+      content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+/**
+ * Handle /rpg location
+ */
+async function handleLocation(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply();
+
+  try {
+    const name = interaction.options.getString('name', true);
+    const limit = interaction.options.getInteger('limit') || 5;
+
+    // Call MCP tool
+    const result = await (mcpServer as any).searchLocations({ query: name, limit });
+    const locations = JSON.parse(result.content[0].text);
+
+    if (locations.length === 0) {
+      await interaction.editReply({
+        content: `No locations found matching "${name}"`,
+      });
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x0099ff)
+      .setTitle(`🗺️ Location Search: "${name}"`)
+      .setDescription(`Found ${locations.length} location${locations.length === 1 ? '' : 's'}`)
+      .setTimestamp();
+
+    // Add fields for each location
+    for (const location of locations) {
+      const description =
+        location.description && location.description.length > 150
+          ? location.description.substring(0, 150) + '...'
+          : location.description || 'No description available';
+
+      embed.addFields({
+        name: location.title || location.name,
+        value:
+          `**Type:** ${location.locationType} | **Scale:** ${location.locationScale}\n` +
+          `${description}\n` +
+          `_ID: \`${location.id}\`_`,
+        inline: false,
+      });
+    }
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error in /rpg location:', error);
+    await interaction.editReply({
+      content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+/**
+ * Handle /rpg lookup (AI-powered rules lookup)
+ */
+async function handleLookup(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply();
+
+  try {
+    const query = interaction.options.getString('query', true);
+    const system = interaction.options.getString('system') || 'D&D 5e';
+
+    // Call MCP tool (Anthropic Claude for rules lookup)
+    const result = await (mcpServer as any).anthropicLookupRule({ query, system });
+    const answer = result.content[0].text;
+
+    const embed = new EmbedBuilder()
+      .setColor(0x9b59b6)
+      .setTitle(`📖 Rules Lookup: ${system}`)
+      .setDescription(`**Query:** ${query}`)
+      .addFields({
+        name: 'Answer',
+        value: answer.length > 1024 ? answer.substring(0, 1021) + '...' : answer,
+      })
+      .setFooter({ text: 'Powered by Claude AI' })
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error in /rpg lookup:', error);
+    await interaction.editReply({
+      content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+// Export commands and handler
+export const rpgCommands = [rpgCommand.data];
+export const rpgHandler = rpgCommand;

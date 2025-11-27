@@ -1,0 +1,141 @@
+// FumbleBot Database Schema
+// Independent from main website - runs on separate DigitalOcean PostgreSQL instance
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/fumblebot"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("FUMBLEBOT_DATABASE_URL")
+}
+
+// ===========================================
+// Guild & Member Management
+// ===========================================
+
+model Guild {
+  id          String   @id @default(cuid())
+  guildId     String   @unique
+  name        String?
+  isHome      Boolean  @default(false) // true = FUMBLEBOT_DISCORD_GUILD_ID (admin access)
+  settings    Json     @default("{}")
+  installedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members   GuildMember[]
+  sessions  Session[]
+  diceRolls DiceRoll[]
+  commands  BotCommand[]
+}
+
+model GuildMember {
+  id        String   @id @default(cuid())
+  guildId   String
+  discordId String
+  username  String
+  roles     String[] @default([])
+  isAdmin   Boolean  @default(false)
+  joinedAt  DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@unique([guildId, discordId])
+  @@index([discordId])
+}
+
+// ===========================================
+// Scripted AI Content (cached/pre-generated)
+// ===========================================
+
+model ScriptedBehavior {
+  id           String   @id @default(cuid())
+  creatureType String   @unique
+  conditions   Json // BehaviorCondition[]
+  generatedAt  DateTime @default(now())
+}
+
+model DialogueTree {
+  id          String   @id @default(cuid())
+  npcId       String   @unique
+  npcName     String
+  nodes       Json // Serialized Map<string, DialogueNode>
+  startNodeId String
+  generatedAt DateTime @default(now())
+}
+
+model RandomTable {
+  id          String   @id @default(cuid())
+  tableId     String   @unique
+  name        String
+  entries     Json // RandomTableEntry[]
+  generatedAt DateTime @default(now())
+}
+
+model CachedRule {
+  id        String   @id @default(cuid())
+  query     String
+  system    String
+  answer    String   @db.Text
+  cachedAt  DateTime @default(now())
+  expiresAt DateTime
+
+  @@unique([system, query])
+  @@index([expiresAt])
+}
+
+// ===========================================
+// Gaming & Statistics
+// ===========================================
+
+model DiceRoll {
+  id        String   @id @default(cuid())
+  guildId   String
+  discordId String
+  channelId String?
+  notation  String
+  rolls     Int[]
+  total     Int
+  isCrit    Boolean  @default(false)
+  isFumble  Boolean  @default(false)
+  rolledAt  DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([discordId])
+  @@index([guildId, rolledAt])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  guildId   String
+  channelId String?
+  name      String
+  system    String?
+  code      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+// ===========================================
+// Analytics
+// ===========================================
+
+model BotCommand {
+  id         String   @id @default(cuid())
+  guildId    String
+  discordId  String
+  command    String
+  subcommand String?
+  executedAt DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([command])
+  @@index([guildId, executedAt])
+}

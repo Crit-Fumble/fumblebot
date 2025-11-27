@@ -1,0 +1,271 @@
+/**
+ * Discord App Commands (Context Menu Commands)
+ * Right-click commands that appear on messages and users
+ */
+
+import {
+  ContextMenuCommandBuilder,
+  ApplicationCommandType,
+  type MessageContextMenuCommandInteraction,
+  type UserContextMenuCommandInteraction,
+  type ContextMenuCommandInteraction,
+  PermissionFlagsBits,
+} from 'discord.js';
+import type { CommandHandler } from '../types.js';
+
+/**
+ * Message Context Menu Commands
+ * Appear when right-clicking on a message
+ */
+
+// Roll dice from message
+export const rollFromMessage: CommandHandler = {
+  data: new ContextMenuCommandBuilder()
+    .setName('Roll Dice from Message')
+    .setType(ApplicationCommandType.Message)
+    .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+
+  async execute(interaction: MessageContextMenuCommandInteraction) {
+    const message = interaction.targetMessage;
+    const content = message.content;
+
+    // Extract dice notation from message (e.g., "1d20", "2d6+3")
+    const dicePattern = /(\d+)d(\d+)([+-]\d+)?/gi;
+    const matches = [...content.matchAll(dicePattern)];
+
+    if (matches.length === 0) {
+      await interaction.reply({
+        content: '❌ No dice notation found in message (e.g., 1d20, 2d6+3)',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Roll all dice found
+    const results: string[] = [];
+    for (const match of matches) {
+      const numDice = parseInt(match[1]);
+      const sides = parseInt(match[2]);
+      const modifier = match[3] ? parseInt(match[3]) : 0;
+
+      const rolls: number[] = [];
+      for (let i = 0; i < numDice; i++) {
+        rolls.push(Math.floor(Math.random() * sides) + 1);
+      }
+
+      const total = rolls.reduce((sum, roll) => sum + roll, 0) + modifier;
+      const notation = `${numDice}d${sides}${modifier !== 0 ? (modifier > 0 ? '+' : '') + modifier : ''}`;
+
+      results.push(`**${notation}**: ${rolls.join(' + ')}${modifier !== 0 ? ` ${modifier > 0 ? '+' : ''}${modifier}` : ''} = **${total}**`);
+    }
+
+    await interaction.reply({
+      content: `🎲 **Dice Rolls from Message**\n\n${results.join('\n')}`,
+    });
+  },
+};
+
+// Save message as note
+export const saveAsNote: CommandHandler = {
+  data: new ContextMenuCommandBuilder()
+    .setName('Save as Campaign Note')
+    .setType(ApplicationCommandType.Message)
+    .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+
+  async execute(interaction: MessageContextMenuCommandInteraction) {
+    const message = interaction.targetMessage;
+
+    // TODO: Save to database
+    // await prisma.campaignNote.create({
+    //   data: {
+    //     guildId: interaction.guildId!,
+    //     userId: interaction.user.id,
+    //     messageId: message.id,
+    //     content: message.content,
+    //     authorId: message.author.id,
+    //     timestamp: message.createdAt
+    //   }
+    // });
+
+    await interaction.reply({
+      content: `✅ Saved message as campaign note!\n\n` +
+        `📝 **Preview:** ${message.content.slice(0, 100)}${message.content.length > 100 ? '...' : ''}`,
+      ephemeral: true,
+    });
+  },
+};
+
+// Add message to session log
+export const addToSessionLog: CommandHandler = {
+  data: new ContextMenuCommandBuilder()
+    .setName('Add to Session Log')
+    .setType(ApplicationCommandType.Message)
+    .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+
+  async execute(interaction: MessageContextMenuCommandInteraction) {
+    const message = interaction.targetMessage;
+
+    // TODO: Add to session log in database
+
+    await interaction.reply({
+      content: `✅ Added to session log!\n\n` +
+        `📋 **Entry:** ${message.content.slice(0, 100)}${message.content.length > 100 ? '...' : ''}`,
+      ephemeral: true,
+    });
+  },
+};
+
+// Parse as character stats
+export const parseCharacterStats: CommandHandler = {
+  data: new ContextMenuCommandBuilder()
+    .setName('Parse Character Stats')
+    .setType(ApplicationCommandType.Message)
+    .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+
+  async execute(interaction: MessageContextMenuCommandInteraction) {
+    await interaction.deferReply({ ephemeral: true });
+
+    const message = interaction.targetMessage;
+    const content = message.content;
+
+    // TODO: Use AI to parse character stats from message
+    // const stats = await parseStatsWithAI(content);
+
+    await interaction.editReply({
+      content: `🤖 **Character Stats Parser** (Coming Soon)\n\n` +
+        `This will use AI to extract character stats from messages like:\n` +
+        `• Ability scores (STR, DEX, CON, etc.)\n` +
+        `• HP, AC, Speed\n` +
+        `• Skills and proficiencies\n` +
+        `• Spells and equipment\n\n` +
+        `**Message Preview:**\n${content.slice(0, 200)}${content.length > 200 ? '...' : ''}`,
+    });
+  },
+};
+
+/**
+ * User Context Menu Commands
+ * Appear when right-clicking on a user
+ */
+
+// View user's characters
+export const viewCharacters: CommandHandler = {
+  data: new ContextMenuCommandBuilder()
+    .setName('View Characters')
+    .setType(ApplicationCommandType.User)
+    .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+
+  async execute(interaction: UserContextMenuCommandInteraction) {
+    const targetUser = interaction.targetUser;
+
+    // TODO: Fetch characters from database
+    // const characters = await prisma.rpgCharacter.findMany({
+    //   where: {
+    //     ownerId: targetUser.id,
+    //     guildId: interaction.guildId!,
+    //     deletedAt: null
+    //   }
+    // });
+
+    await interaction.reply({
+      content: `📜 **${targetUser.username}'s Characters** (Coming Soon)\n\n` +
+        `This will show all characters owned by this user in your server.`,
+      ephemeral: true,
+    });
+  },
+};
+
+// View user's dice stats
+export const viewDiceStats: CommandHandler = {
+  data: new ContextMenuCommandBuilder()
+    .setName('View Dice Statistics')
+    .setType(ApplicationCommandType.User)
+    .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+
+  async execute(interaction: UserContextMenuCommandInteraction) {
+    const targetUser = interaction.targetUser;
+
+    // TODO: Fetch dice roll stats from database
+    // const stats = await getDiceStats(targetUser.id, interaction.guildId!);
+
+    await interaction.reply({
+      content: `🎲 **${targetUser.username}'s Dice Stats** (Coming Soon)\n\n` +
+        `This will show:\n` +
+        `• Total rolls\n` +
+        `• Crits and fumbles\n` +
+        `• Average rolls\n` +
+        `• Most rolled dice\n` +
+        `• Lucky/unlucky streaks`,
+      ephemeral: true,
+    });
+  },
+};
+
+// Award Crit-Coins
+export const awardCritCoins: CommandHandler = {
+  data: new ContextMenuCommandBuilder()
+    .setName('Award Crit-Coins')
+    .setType(ApplicationCommandType.User)
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+
+  async execute(interaction: UserContextMenuCommandInteraction) {
+    const targetUser = interaction.targetUser;
+
+    // TODO: Show modal to enter amount
+    // TODO: Award coins in database
+
+    await interaction.reply({
+      content: `🪙 **Award Crit-Coins to ${targetUser.username}** (Coming Soon)\n\n` +
+        `GMs and moderators can award Crit-Coins for:\n` +
+        `• Great roleplay\n` +
+        `• Creative problem solving\n` +
+        `• Helping other players\n` +
+        `• Contributing to the campaign`,
+      ephemeral: true,
+    });
+  },
+};
+
+// Check user activity
+export const checkActivity: CommandHandler = {
+  data: new ContextMenuCommandBuilder()
+    .setName('Check Gaming Activity')
+    .setType(ApplicationCommandType.User)
+    .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+
+  async execute(interaction: UserContextMenuCommandInteraction) {
+    const targetUser = interaction.targetUser;
+
+    // TODO: Fetch activity stats from database
+    // const activity = await getUserActivity(targetUser.id, interaction.guildId!);
+
+    await interaction.reply({
+      content: `📊 **${targetUser.username}'s Gaming Activity** (Coming Soon)\n\n` +
+        `This will show:\n` +
+        `• Active campaigns\n` +
+        `• Session attendance\n` +
+        `• Recent dice rolls\n` +
+        `• Characters played\n` +
+        `• Total playtime`,
+      ephemeral: true,
+    });
+  },
+};
+
+/**
+ * Export all app commands
+ */
+export const appCommands = {
+  message: {
+    rollFromMessage,
+    saveAsNote,
+    addToSessionLog,
+    parseCharacterStats,
+  },
+  user: {
+    viewCharacters,
+    viewDiceStats,
+    awardCritCoins,
+    checkActivity,
+  },
+};

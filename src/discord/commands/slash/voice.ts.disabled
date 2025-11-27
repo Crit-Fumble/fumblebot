@@ -1,0 +1,292 @@
+/**
+ * Voice Commands
+ * Commands for voice channel integration and sound playback
+ */
+
+import {
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  type ChatInputCommandInteraction,
+  type GuildMember,
+  ChannelType,
+} from 'discord.js';
+import { voiceClient } from '../../voice/index.js';
+import type { CommandHandler } from '../types.js';
+
+export const voiceCommands: CommandHandler = {
+  data: new SlashCommandBuilder()
+    .setName('voice')
+    .setDescription('Voice channel integration commands')
+    .setDefaultMemberPermissions(PermissionFlagsBits.UseVoiceActivity)
+    .setDMPermission(false)
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('join')
+        .setDescription('Join your current voice channel')
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('leave')
+        .setDescription('Leave the current voice channel')
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('status')
+        .setDescription('Check voice connection status')
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('play')
+        .setDescription('Play a sound effect from RPG assets')
+        .addStringOption(option =>
+          option
+            .setName('asset')
+            .setDescription('Asset ID or name to play')
+            .setRequired(true)
+            .setAutocomplete(true)
+        )
+        .addNumberOption(option =>
+          option
+            .setName('volume')
+            .setDescription('Volume level (0.0 to 1.0)')
+            .setMinValue(0.0)
+            .setMaxValue(1.0)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('stop')
+        .setDescription('Stop current audio playback')
+    ),
+
+  async execute(interaction: ChatInputCommandInteraction) {
+    const subcommand = interaction.options.getSubcommand();
+
+    switch (subcommand) {
+      case 'join':
+        await handleJoin(interaction);
+        break;
+      case 'leave':
+        await handleLeave(interaction);
+        break;
+      case 'status':
+        await handleStatus(interaction);
+        break;
+      case 'play':
+        await handlePlay(interaction);
+        break;
+      case 'stop':
+        await handleStop(interaction);
+        break;
+      default:
+        await interaction.reply({
+          content: 'Unknown voice command.',
+          ephemeral: true,
+        });
+    }
+  },
+};
+
+/**
+ * Join voice channel
+ */
+async function handleJoin(interaction: ChatInputCommandInteraction) {
+  const member = interaction.member as GuildMember;
+  const voiceChannel = member.voice.channel;
+
+  if (!voiceChannel) {
+    await interaction.reply({
+      content: '❌ You need to be in a voice channel first!',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (voiceChannel.type !== ChannelType.GuildVoice && voiceChannel.type !== ChannelType.GuildStageVoice) {
+    await interaction.reply({
+      content: '❌ Cannot join this type of channel.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  try {
+    await voiceClient.joinChannel(voiceChannel);
+
+    await interaction.reply({
+      content: `🎙️ Joined **${voiceChannel.name}**`,
+      ephemeral: false,
+    });
+  } catch (error) {
+    console.error('[Voice] Error joining channel:', error);
+    await interaction.reply({
+      content: `❌ Failed to join voice channel: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      ephemeral: true,
+    });
+  }
+}
+
+/**
+ * Leave voice channel
+ */
+async function handleLeave(interaction: ChatInputCommandInteraction) {
+  const guildId = interaction.guildId!;
+
+  if (!voiceClient.isConnected(guildId)) {
+    await interaction.reply({
+      content: '❌ Not in a voice channel.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  try {
+    await voiceClient.leaveChannel(guildId);
+
+    await interaction.reply({
+      content: '👋 Left voice channel',
+      ephemeral: false,
+    });
+  } catch (error) {
+    console.error('[Voice] Error leaving channel:', error);
+    await interaction.reply({
+      content: `❌ Failed to leave voice channel: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      ephemeral: true,
+    });
+  }
+}
+
+/**
+ * Check voice status
+ */
+async function handleStatus(interaction: ChatInputCommandInteraction) {
+  const guildId = interaction.guildId!;
+
+  if (!voiceClient.isConnected(guildId)) {
+    await interaction.reply({
+      content: '📊 **Voice Status**: Not connected',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const channelId = voiceClient.getCurrentChannel(guildId);
+  const channel = channelId ? interaction.guild?.channels.cache.get(channelId) : null;
+
+  await interaction.reply({
+    content: `📊 **Voice Status**: Connected to ${channel ? `**${channel.name}**` : `<#${channelId}>`}`,
+    ephemeral: true,
+  });
+}
+
+/**
+ * Play sound effect from RPG assets
+ *
+ * TODO: Implement asset lookup from database
+ * TODO: Download audio from asset URL
+ * TODO: Add volume control
+ * TODO: Add queue system for multiple sounds
+ */
+async function handlePlay(interaction: ChatInputCommandInteraction) {
+  const guildId = interaction.guildId!;
+  const assetIdOrName = interaction.options.getString('asset', true);
+  const volume = interaction.options.getNumber('volume') ?? 0.5;
+
+  // Check if connected
+  if (!voiceClient.isConnected(guildId)) {
+    await interaction.reply({
+      content: '❌ Not in a voice channel. Use `/voice join` first.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply();
+
+  try {
+    // TODO: Lookup asset from database
+    // const asset = await lookupRpgAsset(assetIdOrName);
+    // if (!asset) {
+    //   await interaction.editReply('❌ Sound asset not found.');
+    //   return;
+    // }
+
+    // STUB: For now, just acknowledge the command
+    await interaction.editReply({
+      content: `🎵 **Sound Effect Playback** (Coming Soon)\n\n` +
+        `Asset: \`${assetIdOrName}\`\n` +
+        `Volume: ${Math.round(volume * 100)}%\n\n` +
+        `*This feature will play sound effects from RPG assets tagged as "sound" in voice channels.*`,
+    });
+
+    // TODO: Implement actual playback
+    // const audioUrl = asset.url;
+    // await voiceClient.playUrl(guildId, audioUrl);
+    // await interaction.editReply(`✅ Played **${asset.name}**`);
+
+  } catch (error) {
+    console.error('[Voice] Error playing sound:', error);
+    await interaction.editReply({
+      content: `❌ Failed to play sound: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+/**
+ * Stop current playback
+ */
+async function handleStop(interaction: ChatInputCommandInteraction) {
+  const guildId = interaction.guildId!;
+
+  if (!voiceClient.isConnected(guildId)) {
+    await interaction.reply({
+      content: '❌ Not in a voice channel.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  try {
+    voiceClient.stop(guildId);
+
+    await interaction.reply({
+      content: '⏹️ Stopped playback',
+      ephemeral: false,
+    });
+  } catch (error) {
+    console.error('[Voice] Error stopping playback:', error);
+    await interaction.reply({
+      content: `❌ Failed to stop playback: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      ephemeral: true,
+    });
+  }
+}
+
+/**
+ * Autocomplete handler for asset selection
+ * TODO: Implement asset search from database
+ */
+export async function handleVoiceAutocomplete(interaction: any) {
+  const focusedValue = interaction.options.getFocused();
+
+  // TODO: Search RpgAssets with tag="sound" in database
+  // const assets = await searchRpgAssets({ tag: 'sound', query: focusedValue });
+
+  // STUB: Return example assets
+  const choices = [
+    { name: 'Sword Swing', value: 'asset-sword-swing' },
+    { name: 'Magic Spell Cast', value: 'asset-magic-cast' },
+    { name: 'Door Creak', value: 'asset-door-creak' },
+    { name: 'Footsteps', value: 'asset-footsteps' },
+    { name: 'Thunder Clap', value: 'asset-thunder' },
+  ].filter(choice =>
+    choice.name.toLowerCase().includes(focusedValue.toLowerCase())
+  );
+
+  await interaction.respond(
+    choices.slice(0, 25).map(choice => ({
+      name: choice.name,
+      value: choice.value,
+    }))
+  );
+}
