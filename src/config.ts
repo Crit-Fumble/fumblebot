@@ -46,6 +46,7 @@ export function loadAnthropicConfig(): AnthropicConfig {
 export function loadAPIConfig(): APIConfig {
   return {
     baseUrl: 'https://www.crit-fumble.com',
+    botApiSecret: getEnvOptional('FUMBLEBOT_API_SECRET') || undefined,
   }
 }
 

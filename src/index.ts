@@ -92,11 +92,12 @@ export class FumbleBot {
       this.aiService.initializeAnthropic(config.anthropic)
     }
 
-    // Initialize API client with bot's Discord ID for authentication
+    // Initialize API client with bot's Discord ID and API secret for authentication
     // The bot's Discord ID is the same as the client ID
     this.apiClient = APIClient.initialize({
       ...config.api,
       botDiscordId: config.discord.clientId,
+      botApiSecret: config.api.botApiSecret,
     })
 
     // Initialize Discord client

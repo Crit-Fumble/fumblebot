@@ -17,6 +17,7 @@ import type {
 
 export interface APIClientConfig extends APIConfig {
   botDiscordId?: string
+  botApiSecret?: string
 }
 
 export class APIClient {
@@ -24,10 +25,12 @@ export class APIClient {
 
   private baseUrl: string
   private botDiscordId: string | null
+  private botApiSecret: string | null
 
   private constructor(config: APIClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '') // Remove trailing slash
     this.botDiscordId = config.botDiscordId || null
+    this.botApiSecret = config.botApiSecret || null
   }
 
   /**
@@ -74,9 +77,12 @@ export class APIClient {
       ...(options.headers as Record<string, string>),
     }
 
-    // Add bot authentication header if configured
+    // Add bot authentication headers if configured
     if (this.botDiscordId) {
       headers['X-Discord-Bot-Id'] = this.botDiscordId
+    }
+    if (this.botApiSecret) {
+      headers['X-Bot-Secret'] = this.botApiSecret
     }
 
     const response = await fetch(url, {

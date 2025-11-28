@@ -47,6 +47,7 @@ export interface AnthropicConfig {
 
 export interface APIConfig {
   baseUrl: string
+  botApiSecret?: string
 }
 
 // Discord types
