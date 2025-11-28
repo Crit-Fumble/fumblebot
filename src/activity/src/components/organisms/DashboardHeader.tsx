@@ -1,5 +1,4 @@
-import { Button } from '../atoms';
-import { UserBadge, ChatButton } from '../molecules';
+import { Button, UserBadge, ChatButton } from '@crit-fumble/react';
 
 export interface DashboardHeaderProps {
   title: string;

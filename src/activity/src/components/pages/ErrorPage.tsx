@@ -1,5 +1,4 @@
-import { Button } from '../atoms';
-import { CenteredLayout } from '../templates';
+import { Button, CenteredLayout } from '@crit-fumble/react';
 
 export interface ErrorPageProps {
   error: Error;

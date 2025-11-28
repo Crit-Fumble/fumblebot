@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Button, Input, Spinner } from '../atoms';
+import { Button, Input, Spinner } from '@crit-fumble/react';
 
 export interface ChatMessage {
   id: string;

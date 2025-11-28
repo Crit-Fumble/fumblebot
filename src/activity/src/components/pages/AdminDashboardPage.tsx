@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MainLayout } from '../templates';
+import { MainLayout } from '@crit-fumble/react';
 import { DashboardHeader, CampaignGrid, CreateCampaignModal, ChatPanel } from '../organisms';
 import type { Campaign, FoundrySystem } from '@/types';
 

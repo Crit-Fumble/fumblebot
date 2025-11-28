@@ -5,4 +5,4 @@ export { DashboardHeader, type DashboardHeaderProps } from './DashboardHeader';
 export { ChannelLinkingPanel, type ChannelLinkingPanelProps } from './ChannelLinkingPanel';
 export { RoleLinkingPanel, type RoleLinkingPanelProps } from './RoleLinkingPanel';
 export { BotSettingsPanel, type BotSettingsPanelProps } from './BotSettingsPanel';
-export { ChatPanel, type ChatPanelProps, type ChatMessage } from './ChatPanel';
+export { ChatPanel, type ChatPanelProps, type ChatMessage as ChatPanelMessage } from './ChatPanel';

@@ -1,5 +1,4 @@
-import { Button } from '../atoms';
-import { SettingToggleRow, SettingSelectRow } from '../molecules';
+import { Button, SettingToggleRow, SettingSelectRow } from '@crit-fumble/react';
 import type { BotSettings } from '@/types';
 
 export interface BotSettingsPanelProps {

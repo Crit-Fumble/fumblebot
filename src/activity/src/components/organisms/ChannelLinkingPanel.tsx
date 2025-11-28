@@ -1,4 +1,4 @@
-import { Button, Select, type SelectOption } from '../atoms';
+import { Button, Select, type SelectOption } from '@crit-fumble/react';
 import type { ChannelLinks, DiscordChannel } from '@/types';
 
 export interface ChannelLinkingPanelProps {

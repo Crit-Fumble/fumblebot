@@ -1,7 +1,5 @@
-import { Button } from '../atoms';
-import { Card, CardFooter, StatusIndicator } from '../molecules';
+import { Button, Card, CardFooter, StatusIndicator, type StatusType } from '@crit-fumble/react';
 import type { Campaign } from '@/types';
-import type { StatusType } from '../atoms';
 
 export interface CampaignCardProps {
   campaign: Campaign;

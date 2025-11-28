@@ -1,5 +1,5 @@
+import { EmptyState } from '@crit-fumble/react';
 import { CampaignCard, CreateCampaignCard } from './CampaignCard';
-import { EmptyState } from '../molecules';
 import type { Campaign } from '@/types';
 
 export interface CampaignGridProps {

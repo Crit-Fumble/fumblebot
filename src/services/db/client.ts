@@ -9,6 +9,7 @@
 import { createRequire } from 'module'
 import { pathToFileURL } from 'url'
 import { join } from 'path'
+import { PrismaPg } from '@prisma/adapter-pg'
 
 // Create require function from project root (where node_modules lives)
 const projectRoot = pathToFileURL(join(process.cwd(), 'package.json')).href
@@ -16,12 +17,15 @@ const requireFromRoot = createRequire(projectRoot)
 
 // Dynamically require the Prisma client from node_modules/.prisma/fumblebot
 const prismaModule = requireFromRoot('.prisma/fumblebot')
-const PrismaClient = prismaModule.PrismaClient as new () => any
+const PrismaClient = prismaModule.PrismaClient as new (options?: { adapter: PrismaPg }) => any
+
+// Create the PostgreSQL adapter with the connection string from env
+const adapter = new PrismaPg({ connectionString: process.env.FUMBLEBOT_DATABASE_URL })
 
 // Type the global for hot reloading in development
 const globalForPrisma = globalThis as unknown as { prisma: InstanceType<typeof PrismaClient> | undefined }
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient()
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter })
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma

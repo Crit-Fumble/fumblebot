@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Button, type SelectOption } from '../atoms';
-import { Modal, ModalFooter, FormField } from '../molecules';
+import { Button, Modal, ModalFooter, FormField, type SelectOption } from '@crit-fumble/react';
 import type { FoundrySystem } from '@/types';
 
 export interface CreateCampaignModalProps {

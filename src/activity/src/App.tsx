@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth, type UserActivity } from './context';
-import { GuildSelector } from './components/molecules';
+import { GuildSelector } from '@crit-fumble/react';
 import {
   LoadingPage,
   ErrorPage,

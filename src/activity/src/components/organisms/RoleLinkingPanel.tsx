@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Select, type SelectOption } from '../atoms';
+import { Button, Select, type SelectOption } from '@crit-fumble/react';
 import type { DiscordRole } from '@/types';
 
 export interface RoleLinkingPanelProps {

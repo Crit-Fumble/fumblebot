@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button } from '../atoms';
-import { TabNav, type Tab } from '../molecules';
-import { MainLayout } from '../templates';
+import { Button, TabNav, MainLayout, type Tab } from '@crit-fumble/react';
 import { ChannelLinkingPanel, RoleLinkingPanel, BotSettingsPanel } from '../organisms';
 import type { ChannelLinks, BotSettings, DiscordChannel, DiscordRole } from '@/types';
 

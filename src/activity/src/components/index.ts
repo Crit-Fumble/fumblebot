@@ -1,16 +1,8 @@
-// Atomic Design Components
+// Re-export shared components from @crit-fumble/react
+export * from '@crit-fumble/react';
 
-// Atoms - Basic building blocks
-export * from './atoms';
-
-// Molecules - Combinations of atoms
-export * from './molecules';
-
-// Organisms - Complex components made of molecules and atoms
+// Organisms - App-specific complex components
 export * from './organisms';
-
-// Templates - Page layouts without data
-export * from './templates';
 
 // Pages - Complete views with data
 export * from './pages';

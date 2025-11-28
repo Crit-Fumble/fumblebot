@@ -1,5 +1,4 @@
-import { Spinner } from '../atoms';
-import { CenteredLayout } from '../templates';
+import { Spinner, CenteredLayout } from '@crit-fumble/react';
 
 export interface LoadingPageProps {
   message?: string;
