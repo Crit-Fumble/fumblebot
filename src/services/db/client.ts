@@ -4,11 +4,17 @@
  */
 
 // Import from the generated client location
-// @ts-ignore - Prisma generates this at build time
-import { PrismaClient } from '../../node_modules/.prisma/fumblebot/index.js'
+// Using createRequire to resolve the Prisma client from node_modules
+// This works from both src and dist directories
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
 
-// Global for hot reloading in development
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined }
+// Dynamically require the Prisma client - works from both src and dist
+const prismaModule = require('.prisma/fumblebot')
+const PrismaClient = prismaModule.PrismaClient as new () => any
+
+// Type the global for hot reloading in development
+const globalForPrisma = globalThis as unknown as { prisma: InstanceType<typeof PrismaClient> | undefined }
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient()
 
