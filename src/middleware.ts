@@ -106,8 +106,9 @@ export function setupSecurityHeaders(app: Application): void {
     // Prevent MIME type sniffing
     res.header('X-Content-Type-Options', 'nosniff');
 
-    // Prevent clickjacking (fallback for browsers that don't support CSP frame-ancestors)
-    res.header('X-Frame-Options', 'SAMEORIGIN');
+    // Note: X-Frame-Options is intentionally NOT set here because we use CSP frame-ancestors
+    // which is more flexible and allows Discord Activity iframe embedding.
+    // X-Frame-Options: SAMEORIGIN would block Discord from embedding our app.
 
     // XSS Protection (legacy browsers)
     res.header('X-XSS-Protection', '1; mode=block');
