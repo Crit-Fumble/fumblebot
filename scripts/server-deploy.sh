@@ -15,6 +15,12 @@ APP_DIR="/root/fumblebot"
 LOG_FILE="/root/fumblebot/deploy.log"
 LOCK_FILE="/tmp/fumblebot-deploy.lock"
 
+# Ensure app directory exists
+if [ ! -d "$APP_DIR" ]; then
+    echo -e "${RED}Error: $APP_DIR does not exist. Please clone the repository first.${NC}"
+    exit 1
+fi
+
 # Ensure log file exists
 touch "$LOG_FILE"
 
