@@ -9,6 +9,7 @@ export {
   handleGetAuthUser,
   handleLogout,
   handleGetUserGuilds,
+  handleGetUserActivities,
 } from './auth.js';
 
 export {

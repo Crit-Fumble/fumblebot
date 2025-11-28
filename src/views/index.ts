@@ -4,8 +4,6 @@
  */
 
 export { getDiscordActivityHtml } from './discord.js';
-export { getWebDashboardHtml } from './web.js';
-export { getWebActivityHtml } from './web-activity.js';
 export {
   getCharacterSheetHtml,
   getDiceRollerHtml,

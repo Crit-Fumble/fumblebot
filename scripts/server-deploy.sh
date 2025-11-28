@@ -71,6 +71,19 @@ if [ $? -ne 0 ]; then
     log "${RED}npm install failed${NC}"
     exit 1
 fi
+
+# Install client dependencies (React app in src/client)
+if [ -d "src/client" ] && [ -f "src/client/package.json" ]; then
+    log "Installing client dependencies..."
+    cd src/client
+    npm ci --production=false 2>/dev/null || npm install
+    if [ $? -ne 0 ]; then
+        log "${RED}Client npm install failed${NC}"
+        exit 1
+    fi
+    cd ../..
+fi
+
 log "${GREEN}Dependencies installed${NC}"
 log ""
 

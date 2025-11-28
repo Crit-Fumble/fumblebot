@@ -1,8 +1,11 @@
 /**
- * Discord Module
- * Exports Discord-related functionality
+ * FumbleBot Discord Bot Module
+ *
+ * Exports all commands, components, and handlers for the Discord bot.
  */
 
-export { FumbleBotClient } from './client.js'
-export { CommandRegistry } from './commands/registry.js'
-export type { CommandHandler, CommandResponse } from './commands/types.js'
+// Slash commands and context menus
+export * from './commands.js';
+
+// Interactive components (embeds, buttons, modals)
+export * from './components.js';

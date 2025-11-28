@@ -17,7 +17,6 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { routes, printRouteTable } from './routes.js';
 import { setupAllMiddleware } from './middleware.js';
-import { detectPlatform } from './controllers/detection.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +26,7 @@ import {
   handleGetAuthUser,
   handleLogout,
   handleGetUserGuilds,
+  handleGetUserActivities,
   handleSessionCreate,
   handleSessionGet,
   handleListSystems,
@@ -52,19 +52,16 @@ import {
 } from './middleware/index.js';
 import {
   getDiscordActivityHtml,
-  getWebDashboardHtml,
-  getWebActivityHtml,
   getCharacterSheetHtml,
   getDiceRollerHtml,
   getMapViewerHtml,
   getInitiativeTrackerHtml,
   getSpellLookupHtml,
 } from './views/index.js';
-import type { Platform, PlatformContext, PlatformServerConfig } from './models/types.js';
+import type { PlatformServerConfig } from './models/types.js';
 
 // Re-export types
-export type { Platform, PlatformContext, PlatformServerConfig };
-export type { ActivityServerConfig } from './models/types.js';
+export type { Platform, PlatformContext, PlatformServerConfig, ActivityServerConfig } from './models/types.js';
 
 export class PlatformServer {
   private app: express.Application;
@@ -154,10 +151,6 @@ export class PlatformServer {
       handleHealth: (req, res) => {
         res.json({ status: 'ok', timestamp: new Date().toISOString() });
       },
-      handlePlatformInfo: (req, res) => {
-        const ctx = detectPlatform(req);
-        res.json(ctx);
-      },
 
       // Auth
       handleTokenExchange: (req, res) => handleTokenExchange(req, res),
@@ -165,22 +158,10 @@ export class PlatformServer {
       handleGetAuthUser: (req, res) => handleGetAuthUser(req, res),
       handleLogout: (req, res) => handleLogout(req, res),
       handleGetUserGuilds: (req, res) => handleGetUserGuilds(req, res),
+      handleGetUserActivities: (req, res) => handleGetUserActivities(req, res),
 
-      // Platform routes
-      handleRoot: (req, res) => {
-        const ctx = detectPlatform(req);
-        if (ctx.isDiscordActivity) {
-          this.serveDiscordActivity(req, res);
-        } else {
-          this.serveWebActivity(req, res, ctx);
-        }
-      },
-      handleDiscordRoute: (req, res) => this.serveDiscordActivity(req, res),
-      handleWebRoute: (req, res) => {
-        const ctx = detectPlatform(req);
-        this.serveWebActivity(req, res, ctx);
-      },
-      handleWebActivityRoute: (req, res) => this.serveWebActivityPanel(req, res),
+      // Platform route - serves React app for both Discord and Web
+      handleRoot: (req, res) => this.serveReactApp(req, res),
 
       // Activities
       serveCharacterSheet: (req, res) => this.serveCharacterSheet(req, res),
@@ -215,10 +196,10 @@ export class PlatformServer {
   }
 
   /**
-   * Serve Discord Activity landing page (React app)
+   * Serve React app for all platforms
+   * Platform detection happens client-side in AuthContext
    */
-  private serveDiscordActivity(req: Request, res: Response): void {
-    // Serve the built React app's index.html
+  private serveReactApp(req: Request, res: Response): void {
     const indexPath = path.join(__dirname, 'public', 'index.html');
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath);
@@ -226,30 +207,6 @@ export class PlatformServer {
       // Fallback to legacy HTML if React app isn't built
       const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '';
       res.send(getDiscordActivityHtml(clientId));
-    }
-  }
-
-  /**
-   * Serve Web Dashboard landing page
-   */
-  private serveWebActivity(req: Request, res: Response, ctx: PlatformContext): void {
-    const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '';
-    res.send(getWebDashboardHtml(clientId, this.config.publicUrl, ctx));
-  }
-
-  /**
-   * Serve Web Activity Panel (React app with OAuth session auth)
-   * Now uses the same React app as Discord, with platform detection
-   */
-  private serveWebActivityPanel(req: Request, res: Response): void {
-    // Serve the built React app's index.html (same app, different auth flow)
-    const indexPath = path.join(__dirname, 'public', 'index.html');
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      // Fallback to legacy HTML if React app isn't built
-      const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '';
-      res.send(getWebActivityHtml(clientId, this.config.publicUrl));
     }
   }
 

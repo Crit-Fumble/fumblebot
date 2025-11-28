@@ -203,6 +203,8 @@ export function handleLogout(req: Request, res: Response): void {
 
 /**
  * Get user's Discord guilds using server-side stored token
+ * Query params:
+ *   - botOnly=true: Only return guilds where FumbleBot is installed
  */
 export async function handleGetUserGuilds(req: Request, res: Response): Promise<void> {
   const user = getSessionUser(req);
@@ -218,6 +220,8 @@ export async function handleGetUserGuilds(req: Request, res: Response): Promise<
     return;
   }
 
+  const botOnly = req.query.botOnly === 'true';
+
   try {
     const response = await fetch('https://discord.com/api/users/@me/guilds', {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -230,10 +234,146 @@ export async function handleGetUserGuilds(req: Request, res: Response): Promise<
       return;
     }
 
-    const guilds = await response.json();
+    let guilds = await response.json();
+
+    // If botOnly, filter to guilds where FumbleBot is installed
+    if (botOnly) {
+      const installedGuilds = await prisma.guild.findMany({
+        select: { guildId: true },
+      });
+      const installedGuildIds = new Set(installedGuilds.map((g: { guildId: string }) => g.guildId));
+      guilds = guilds.filter((g: { id: string }) => installedGuildIds.has(g.id));
+    }
+
     res.json({ guilds });
   } catch (error) {
     console.error('[Platform] Get guilds error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+/**
+ * Get user's active activities (sessions where they have a character)
+ * Returns activities grouped by guild
+ */
+export async function handleGetUserActivities(req: Request, res: Response): Promise<void> {
+  const user = getSessionUser(req);
+
+  if (!user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  const guildId = req.query.guildId as string | undefined;
+
+  try {
+    // Find all characters owned by this user
+    const characters = await prisma.fumbleCharacter.findMany({
+      where: {
+        ownerId: user.discordId,
+        isActive: true,
+        isRetired: false,
+        ...(guildId && {
+          campaign: {
+            guildId,
+          },
+        }),
+      },
+      include: {
+        campaign: {
+          include: {
+            sessions: {
+              where: {
+                status: 'active',
+              },
+              orderBy: {
+                startedAt: 'desc',
+              },
+              take: 1,
+            },
+            guild: {
+              select: {
+                guildId: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Group by guild and format response
+    const activitiesByGuild: Record<string, {
+      guildId: string;
+      guildName: string | null;
+      campaigns: Array<{
+        id: string;
+        name: string;
+        hasActiveSession: boolean;
+        activeSession: {
+          id: string;
+          name: string | null;
+          channelId: string;
+          startedAt: Date;
+        } | null;
+        characters: Array<{
+          id: string;
+          name: string;
+          type: string;
+          avatarUrl: string | null;
+        }>;
+      }>;
+    }> = {};
+
+    for (const char of characters) {
+      const campaign = char.campaign;
+      const guild = campaign.guild;
+      const guildKey = guild.guildId;
+
+      if (!activitiesByGuild[guildKey]) {
+        activitiesByGuild[guildKey] = {
+          guildId: guild.guildId,
+          guildName: guild.name,
+          campaigns: [],
+        };
+      }
+
+      // Find or create campaign entry
+      let campaignEntry = activitiesByGuild[guildKey].campaigns.find(c => c.id === campaign.id);
+      if (!campaignEntry) {
+        const activeSession = campaign.sessions[0] || null;
+        campaignEntry = {
+          id: campaign.id,
+          name: campaign.name,
+          hasActiveSession: !!activeSession,
+          activeSession: activeSession ? {
+            id: activeSession.id,
+            name: activeSession.name,
+            channelId: activeSession.channelId,
+            startedAt: activeSession.startedAt,
+          } : null,
+          characters: [],
+        };
+        activitiesByGuild[guildKey].campaigns.push(campaignEntry);
+      }
+
+      campaignEntry.characters.push({
+        id: char.id,
+        name: char.name,
+        type: char.type,
+        avatarUrl: char.avatarUrl,
+      });
+    }
+
+    // Convert to array and filter to only guilds with active sessions
+    const activities = Object.values(activitiesByGuild).map(guild => ({
+      ...guild,
+      campaigns: guild.campaigns.filter(c => c.hasActiveSession),
+    })).filter(guild => guild.campaigns.length > 0);
+
+    res.json({ activities });
+  } catch (error) {
+    console.error('[Platform] Get user activities error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

@@ -21,6 +21,7 @@ export interface AuthState {
   context: DiscordContext | null;
   error: Error | null;
   guilds: Guild[] | null; // For web mode guild selection
+  activities: UserActivity[] | null; // Active sessions user can join
 }
 
 export interface Guild {
@@ -29,6 +30,28 @@ export interface Guild {
   icon: string | null;
   owner: boolean;
   permissions: string;
+}
+
+export interface UserActivity {
+  guildId: string;
+  guildName: string | null;
+  campaigns: Array<{
+    id: string;
+    name: string;
+    hasActiveSession: boolean;
+    activeSession: {
+      id: string;
+      name: string | null;
+      channelId: string;
+      startedAt: string;
+    } | null;
+    characters: Array<{
+      id: string;
+      name: string;
+      type: string;
+      avatarUrl: string | null;
+    }>;
+  }>;
 }
 
 interface AuthContextValue extends AuthState {
@@ -83,6 +106,7 @@ export function AuthProvider({ children, clientId }: AuthProviderProps) {
     context: null,
     error: null,
     guilds: null,
+    activities: null,
   });
 
   const apiPath = getApiPath(state.platform);
@@ -184,23 +208,18 @@ export function AuthProvider({ children, clientId }: AuthProviderProps) {
         global_name: data.user.globalName,
       };
 
-      // Fetch user's guilds
-      const guildsResponse = await fetch('/api/auth/guilds', {
+      // Fetch user's guilds (only where bot is installed)
+      const guildsResponse = await fetch('/api/auth/guilds?botOnly=true', {
         credentials: 'include',
       });
 
       let guilds: Guild[] = [];
       let selectedGuildId: string | null = null;
+      let isAdminInSelectedGuild = false;
 
       if (guildsResponse.ok) {
         const guildsData = await guildsResponse.json();
         guilds = guildsData.guilds || [];
-
-        // Filter to admin guilds only
-        guilds = guilds.filter(g => {
-          const permissions = BigInt(g.permissions);
-          return (permissions & ADMIN_PERMISSION) === ADMIN_PERMISSION || g.owner;
-        });
 
         // Check for previously selected guild
         selectedGuildId = localStorage.getItem('fumblebot_selected_guild');
@@ -208,6 +227,25 @@ export function AuthProvider({ children, clientId }: AuthProviderProps) {
           selectedGuildId = null;
           localStorage.removeItem('fumblebot_selected_guild');
         }
+
+        // Determine if user is admin in selected guild
+        if (selectedGuildId) {
+          const selectedGuild = guilds.find(g => g.id === selectedGuildId);
+          if (selectedGuild) {
+            const permissions = BigInt(selectedGuild.permissions);
+            isAdminInSelectedGuild = (permissions & ADMIN_PERMISSION) === ADMIN_PERMISSION || selectedGuild.owner;
+          }
+        }
+      }
+
+      // Fetch user's active activities (campaigns with active sessions where they have characters)
+      let activities: UserActivity[] = [];
+      const activitiesResponse = await fetch('/api/auth/activities', {
+        credentials: 'include',
+      });
+      if (activitiesResponse.ok) {
+        const activitiesData = await activitiesResponse.json();
+        activities = activitiesData.activities || [];
       }
 
       const context: DiscordContext = {
@@ -219,10 +257,11 @@ export function AuthProvider({ children, clientId }: AuthProviderProps) {
       setState(prev => ({
         ...prev,
         isAuthenticated: true,
-        isAdmin: true, // Web users who reach admin view are admins of selected guild
+        isAdmin: isAdminInSelectedGuild,
         user,
         context,
         guilds,
+        activities,
         error: null,
       }));
     } catch (error) {
@@ -281,13 +320,23 @@ export function AuthProvider({ children, clientId }: AuthProviderProps) {
     if (state.platform !== 'web') return;
 
     localStorage.setItem('fumblebot_selected_guild', guildId);
+
+    // Determine if user is admin in this guild
+    const selectedGuild = state.guilds?.find(g => g.id === guildId);
+    let isAdminInGuild = false;
+    if (selectedGuild) {
+      const permissions = BigInt(selectedGuild.permissions);
+      isAdminInGuild = (permissions & ADMIN_PERMISSION) === ADMIN_PERMISSION || selectedGuild.owner;
+    }
+
     setState(prev => ({
       ...prev,
+      isAdmin: isAdminInGuild,
       context: prev.context
         ? { ...prev.context, guildId }
         : { guildId, channelId: null, instanceId: `web-${Date.now()}` },
     }));
-  }, [state.platform]);
+  }, [state.platform, state.guilds]);
 
   // Auto-initialize on mount
   useEffect(() => {

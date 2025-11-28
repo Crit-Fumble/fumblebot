@@ -9,4 +9,5 @@ export {
   type Platform,
   type AuthState,
   type Guild,
+  type UserActivity,
 } from './AuthContext';

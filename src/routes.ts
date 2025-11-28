@@ -31,12 +31,6 @@ export const routes: Record<string, RouteDefinition[]> = {
       handler: 'handleHealth',
       description: 'Health check endpoint',
     },
-    {
-      method: 'get',
-      path: '/api/platform',
-      handler: 'handlePlatformInfo',
-      description: 'Returns detected platform context',
-    },
   ],
 
   // Authentication
@@ -69,41 +63,23 @@ export const routes: Record<string, RouteDefinition[]> = {
       method: 'get',
       path: '/api/auth/guilds',
       handler: 'handleGetUserGuilds',
-      description: 'Get user Discord guilds',
+      description: 'Get user Discord guilds (use ?botOnly=true to filter)',
+    },
+    {
+      method: 'get',
+      path: '/api/auth/activities',
+      handler: 'handleGetUserActivities',
+      description: 'Get user active activities (campaigns with active sessions)',
     },
   ],
 
-  // Platform-specific landing pages
+  // Platform routes - React app with client-side platform detection
   platforms: [
     {
       method: 'get',
       path: '/',
       handler: 'handleRoot',
-      description: 'Auto-detect platform and serve appropriate UI',
-    },
-    {
-      method: 'get',
-      path: '/discord',
-      handler: 'handleDiscordRoute',
-      description: 'Force Discord Activity UI',
-    },
-    {
-      method: 'get',
-      path: '/web',
-      handler: 'handleWebRoute',
-      description: 'Force Web Dashboard UI',
-    },
-    {
-      method: 'get',
-      path: '/web/activity',
-      handler: 'handleWebActivityRoute',
-      description: 'Web-based Activity UI (session auth)',
-    },
-    {
-      method: 'get',
-      path: '/discord/activity',
-      handler: 'handleDiscordRoute',
-      description: 'Legacy Discord Activity route',
+      description: 'Serve React app (Discord or Web based on context)',
     },
   ],
 
