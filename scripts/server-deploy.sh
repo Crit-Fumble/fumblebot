@@ -3,17 +3,24 @@
 # This script runs ON the droplet to pull latest changes and deploy
 # Can be triggered manually via SSH or by a webhook
 #
-# Usage: bash scripts/server-deploy.sh [--force]
+# Usage: bash scripts/server-deploy.sh [--force] [--clean]
 #   --force: Force rebuild even if code is up to date
+#   --clean: Fresh clone (backs up .env, removes repo, clones fresh, restores .env)
 
 set -e
 
 # Parse arguments
 FORCE_DEPLOY=false
+CLEAN_DEPLOY=false
 for arg in "$@"; do
     case $arg in
         --force|-f)
             FORCE_DEPLOY=true
+            shift
+            ;;
+        --clean|-c)
+            CLEAN_DEPLOY=true
+            FORCE_DEPLOY=true  # Clean implies force
             shift
             ;;
     esac
@@ -61,8 +68,34 @@ log ""
 
 cd "$APP_DIR"
 
+# Handle clean deploy if requested
+if [ "$CLEAN_DEPLOY" = true ]; then
+    log "${YELLOW}Clean deploy requested - performing fresh clone...${NC}"
+
+    # Backup .env file
+    if [ -f ".env" ]; then
+        log "Backing up .env file..."
+        cp .env /tmp/fumblebot-env-backup
+    fi
+
+    # Remove and re-clone
+    cd /root
+    rm -rf fumblebot
+    git clone https://github.com/Crit-Fumble/fumblebot.git
+    cd fumblebot
+
+    # Restore .env file
+    if [ -f "/tmp/fumblebot-env-backup" ]; then
+        log "Restoring .env file..."
+        mv /tmp/fumblebot-env-backup .env
+    fi
+
+    log "${GREEN}Fresh clone complete${NC}"
+    log ""
+fi
+
 # Step 1: Fetch and check for changes
-log "${YELLOW}Step 1/5: Fetching latest changes...${NC}"
+log "${YELLOW}Step 1/6: Fetching latest changes...${NC}"
 git fetch origin main
 
 LOCAL=$(git rev-parse HEAD)
@@ -83,7 +116,7 @@ log "Remote:  $REMOTE"
 log ""
 
 # Step 2: Pull changes
-log "${YELLOW}Step 2/5: Pulling changes from origin/main...${NC}"
+log "${YELLOW}Step 2/6: Pulling changes from origin/main...${NC}"
 git pull origin main
 if [ $? -ne 0 ]; then
     log "${RED}Git pull failed${NC}"
@@ -93,7 +126,7 @@ log "${GREEN}Changes pulled successfully${NC}"
 log ""
 
 # Step 3: Install dependencies
-log "${YELLOW}Step 3/5: Installing dependencies...${NC}"
+log "${YELLOW}Step 3/6: Installing dependencies...${NC}"
 npm ci --production=false 2>/dev/null || npm install
 if [ $? -ne 0 ]; then
     log "${RED}npm install failed${NC}"
@@ -115,7 +148,7 @@ fi
 log "${GREEN}Dependencies installed${NC}"
 log ""
 
-# Step 3.5: Validate required environment variables
+# Step 4: Validate required environment variables
 log "${YELLOW}Validating environment variables...${NC}"
 if [ -f ".env" ]; then
     # Check for required variables
@@ -144,8 +177,8 @@ else
 fi
 log ""
 
-# Step 4: Build and setup
-log "${YELLOW}Step 4/5: Building application...${NC}"
+# Step 5: Build and setup
+log "${YELLOW}Step 5/6: Building application...${NC}"
 npm run build
 if [ $? -ne 0 ]; then
     log "${RED}Build failed${NC}"
@@ -161,8 +194,8 @@ ln -sf ../node_modules dist/node_modules 2>/dev/null || true
 log "${GREEN}Build complete${NC}"
 log ""
 
-# Step 5: Restart service
-log "${YELLOW}Step 5/5: Restarting service...${NC}"
+# Step 6: Restart service
+log "${YELLOW}Step 6/6: Restarting service...${NC}"
 systemctl restart fumblebot
 
 log "Waiting for service to start..."
