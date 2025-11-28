@@ -1,0 +1,24 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "composite": true,
+    "incremental": true,
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "module": "commonjs",
+    "target": "es2022"
+  },
+  "include": [
+    "models/**/*", 
+    "mcp/**/*", 
+    "client/**/*", 
+    "index.ts",
+    "client/WorldAnvilApiClient.ts"
+  ],
+  "exclude": [
+    "node_modules", 
+    "dist", 
+    "**/__tests__/**"
+  ]
+}

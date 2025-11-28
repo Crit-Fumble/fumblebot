@@ -1,0 +1,20 @@
+# Source files
+__tests__/
+scripts/
+*.ts
+!*.d.ts
+
+# Config files
+tsconfig.json
+jest.config.js
+.eslintrc.js
+.gitignore
+
+# Build artifacts
+coverage/
+.nyc_output/
+
+# Development files
+*.log
+*.tgz
+*.tsbuildinfo

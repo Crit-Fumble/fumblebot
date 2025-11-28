@@ -3,20 +3,11 @@
  * Type definitions for command handlers
  */
 
-import type {
-  ChatInputCommandInteraction,
-  UserContextMenuCommandInteraction,
-  MessageContextMenuCommandInteraction,
-} from 'discord.js'
+import type { ChatInputCommandInteraction } from 'discord.js'
 import type { FumbleBotClient } from '../client.js'
 
 export type CommandHandler = (
   interaction: ChatInputCommandInteraction,
-  bot: FumbleBotClient
-) => Promise<void>
-
-export type ContextMenuHandler = (
-  interaction: UserContextMenuCommandInteraction | MessageContextMenuCommandInteraction,
   bot: FumbleBotClient
 ) => Promise<void>
 

@@ -1,0 +1,36 @@
+{
+  "name": "@crit-fumble/worldographer-client",
+  "version": "0.1.0",
+  "description": "Pixi.js-based map viewer and editor for Worldographer XML format",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest"
+  },
+  "keywords": [
+    "worldographer",
+    "maps",
+    "pixi.js",
+    "hex-maps",
+    "tile-maps",
+    "rpg"
+  ],
+  "author": "Crit-Fumble",
+  "license": "MIT",
+  "dependencies": {
+    "pixi.js": "^8.0.0",
+    "fast-xml-parser": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  }
+}

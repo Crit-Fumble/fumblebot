@@ -5,4 +5,4 @@
 
 export { FumbleBotClient } from './client.js'
 export { CommandRegistry } from './commands/registry.js'
-export type { CommandHandler, ContextMenuHandler, CommandResponse } from './commands/types.js'
+export type { CommandHandler, CommandResponse } from './commands/types.js'

@@ -1,0 +1,28 @@
+{
+  "name": "@crit-fumble/worldanvil-mcp",
+  "version": "1.0.0",
+  "description": "Model Context Protocol server for World Anvil API",
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "worldanvil-mcp": "dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@prisma/client": "^5.22.0",
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.1.6"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

@@ -21,7 +21,7 @@ interface DiceRoll {
 }
 
 /**
- * Parse and roll dice notation (e.g., "2d6+3", "1d20", "4d6kh3")
+ * Parse and roll dice notation (e.g., "2d6+3", "1d20", "4d6")
  */
 function rollDice(notation: string): DiceRoll {
   // Parse notation: NdS+M or NdS-M
@@ -110,7 +110,7 @@ function createDiceEmbed(roll: DiceRoll, username: string): EmbedBuilder {
 export const diceCommands = [
   new SlashCommandBuilder()
     .setName('roll')
-    .setDescription('Roll dice using standard notation')
+    .setDescription('Roll dice using standard notation (e.g., 2d6+3, 1d20, 4d6)')
     .addStringOption((option) =>
       option
         .setName('dice')
@@ -129,36 +129,6 @@ export const diceCommands = [
         .setDescription('Only show the result to you')
         .setRequired(false)
     ),
-
-  new SlashCommandBuilder()
-    .setName('d20')
-    .setDescription('Quick roll a d20')
-    .addIntegerOption((option) =>
-      option
-        .setName('modifier')
-        .setDescription('Modifier to add to the roll')
-        .setRequired(false)
-    ),
-
-  new SlashCommandBuilder()
-    .setName('advantage')
-    .setDescription('Roll 2d20 and take the higher (advantage)')
-    .addIntegerOption((option) =>
-      option
-        .setName('modifier')
-        .setDescription('Modifier to add to the roll')
-        .setRequired(false)
-    ),
-
-  new SlashCommandBuilder()
-    .setName('disadvantage')
-    .setDescription('Roll 2d20 and take the lower (disadvantage)')
-    .addIntegerOption((option) =>
-      option
-        .setName('modifier')
-        .setDescription('Modifier to add to the roll')
-        .setRequired(false)
-    ),
 ]
 
 // Command handler
@@ -166,117 +136,21 @@ export async function diceHandler(
   interaction: ChatInputCommandInteraction,
   _bot: FumbleBotClient
 ): Promise<void> {
-  const commandName = interaction.commandName
   const username = interaction.user.displayName || interaction.user.username
 
   try {
-    if (commandName === 'roll') {
-      const diceNotation = interaction.options.getString('dice', true)
-      const label = interaction.options.getString('label')
-      const isPrivate = interaction.options.getBoolean('private') ?? false
+    const diceNotation = interaction.options.getString('dice', true)
+    const label = interaction.options.getString('label')
+    const isPrivate = interaction.options.getBoolean('private') ?? false
 
-      const roll = rollDice(diceNotation)
-      const embed = createDiceEmbed(roll, username)
+    const roll = rollDice(diceNotation)
+    const embed = createDiceEmbed(roll, username)
 
-      if (label) {
-        embed.setDescription(`**${username}** rolled **${roll.dice}** for *${label}*`)
-      }
-
-      await interaction.reply({ embeds: [embed], ephemeral: isPrivate })
-    } else if (commandName === 'd20') {
-      const modifier = interaction.options.getInteger('modifier') ?? 0
-      const notation = modifier === 0 ? '1d20' : `1d20${modifier >= 0 ? '+' : ''}${modifier}`
-      const roll = rollDice(notation)
-      const embed = createDiceEmbed(roll, username)
-
-      await interaction.reply({ embeds: [embed] })
-    } else if (commandName === 'advantage') {
-      const modifier = interaction.options.getInteger('modifier') ?? 0
-
-      // Roll two d20s
-      const roll1 = Math.floor(Math.random() * 20) + 1
-      const roll2 = Math.floor(Math.random() * 20) + 1
-      const higher = Math.max(roll1, roll2)
-      const total = higher + modifier
-
-      const isCrit = higher === 20
-      const isFumble = higher === 1
-
-      let color = 0x7c3aed
-      if (isCrit) color = 0x22c55e
-      if (isFumble) color = 0xef4444
-
-      const embed = new EmbedBuilder()
-        .setColor(color)
-        .setTitle(
-          isCrit ? '🎉 CRITICAL HIT!' : isFumble ? '💀 FUMBLE!' : '🎲 Advantage Roll'
-        )
-        .setDescription(`**${username}** rolled with **advantage**`)
-        .addFields(
-          {
-            name: 'Rolls',
-            value: `[${roll1}, ${roll2}] → **${higher}**`,
-            inline: true,
-          },
-          {
-            name: 'Modifier',
-            value: modifier >= 0 ? `+${modifier}` : `${modifier}`,
-            inline: true,
-          },
-          {
-            name: 'Total',
-            value: `**${total}**`,
-            inline: true,
-          }
-        )
-        .setFooter({ text: 'Taking the higher roll' })
-        .setTimestamp()
-
-      await interaction.reply({ embeds: [embed] })
-    } else if (commandName === 'disadvantage') {
-      const modifier = interaction.options.getInteger('modifier') ?? 0
-
-      // Roll two d20s
-      const roll1 = Math.floor(Math.random() * 20) + 1
-      const roll2 = Math.floor(Math.random() * 20) + 1
-      const lower = Math.min(roll1, roll2)
-      const total = lower + modifier
-
-      const isCrit = lower === 20
-      const isFumble = lower === 1
-
-      let color = 0x7c3aed
-      if (isCrit) color = 0x22c55e
-      if (isFumble) color = 0xef4444
-
-      const embed = new EmbedBuilder()
-        .setColor(color)
-        .setTitle(
-          isCrit ? '🎉 CRITICAL HIT!' : isFumble ? '💀 FUMBLE!' : '🎲 Disadvantage Roll'
-        )
-        .setDescription(`**${username}** rolled with **disadvantage**`)
-        .addFields(
-          {
-            name: 'Rolls',
-            value: `[${roll1}, ${roll2}] → **${lower}**`,
-            inline: true,
-          },
-          {
-            name: 'Modifier',
-            value: modifier >= 0 ? `+${modifier}` : `${modifier}`,
-            inline: true,
-          },
-          {
-            name: 'Total',
-            value: `**${total}**`,
-            inline: true,
-          }
-        )
-        .setFooter({ text: 'Taking the lower roll' })
-        .setTimestamp()
-
-      await interaction.reply({ embeds: [embed] })
+    if (label) {
+      embed.setDescription(`**${username}** rolled **${roll.dice}** for *${label}*`)
     }
+
+    await interaction.reply({ embeds: [embed], ephemeral: isPrivate })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to roll dice'
     await interaction.reply({ content: `❌ ${errorMessage}`, ephemeral: true })

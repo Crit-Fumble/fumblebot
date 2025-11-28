@@ -1,0 +1,89 @@
+{
+  "name": "@crit-fumble/worldanvil",
+  "version": "2.0.0-r3",
+  "description": "World Anvil API integration for Crit-Fumble; version matches World Anvil API version",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "worldanvil-fetch-rpg-systems": "./cli/fetch-rpg-systems.ts"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./models": {
+      "import": "./dist/models/index.js",
+      "require": "./dist/models/index.js",
+      "types": "./dist/models/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server/index.js",
+      "types": "./dist/server/index.d.ts"
+    },
+    "./client": {
+      "import": "./dist/client/index.js",
+      "types": "./dist/client/index.d.ts"
+    },
+    "./mcp": {
+      "import": "./mcp/dist/server.js",
+      "types": "./mcp/dist/server.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=9.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Crit-Fumble/crit-fumble.git",
+    "directory": "packages/worldanvil"
+  },
+  "keywords": [
+    "worldanvil",
+    "api",
+    "client",
+    "crit-fumble",
+    "rpg",
+    "worldbuilding"
+  ],
+  "author": "Crit-Fumble",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest --config jest.config.js",
+    "lint": "eslint --config eslint.config.js models/**/*.ts server/**/*.ts client/**/*.ts",
+    "clean": "rimraf dist",
+    "extract-schema": "node scripts/extract-world-anvil-schema.js",
+    "prepublishOnly": "npm run test",
+    "prepare": "npm run clean && npm run build",
+    "publish-patch": "npm version patch && npm publish",
+    "publish-minor": "npm version minor && npm publish",
+    "publish-major": "npm version major && npm publish"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.4.0",
+    "@typescript-eslint/eslint-plugin": "^8.41.0",
+    "@typescript-eslint/parser": "^8.41.0",
+    "globals": "^16.3.0",
+    "jest": "^29.5.0",
+    "rimraf": "^5.0.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.1.6"
+  }
+}
