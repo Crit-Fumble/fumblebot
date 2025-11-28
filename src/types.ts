@@ -133,3 +133,45 @@ export interface UserStatusResponse {
   user: CritUser | null
   error?: string
 }
+
+// Wiki types
+export interface WikiPage {
+  id: string
+  slug: string
+  title: string
+  category: string
+  content: string
+  isPublished: boolean
+  publishedAt?: string
+  createdAt: string
+  updatedAt: string
+  author?: { name: string }
+  lastEditor?: { name: string }
+}
+
+export interface WikiPageCreate {
+  slug: string
+  title: string
+  category: string
+  content?: string
+}
+
+export interface WikiPageUpdate {
+  title?: string
+  content?: string
+  category?: string
+  isPublished?: boolean
+  changeNote?: string
+}
+
+export interface WikiListResponse {
+  pages: WikiPage[]
+}
+
+export interface BotStatusResponse {
+  status: 'ok' | 'error'
+  authenticated: boolean
+  discordId?: string
+  role?: 'owner' | 'admin' | 'user'
+  timestamp: string
+}

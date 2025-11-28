@@ -1,17 +1,33 @@
 /**
  * API Client
  * Client for communicating with the crit-fumble.com backend
+ * Supports bot authentication via X-Discord-Bot-Id header
  */
 
-import type { APIConfig, UserStatusResponse, CritUser } from '../types.js'
+import type {
+  APIConfig,
+  UserStatusResponse,
+  CritUser,
+  WikiPage,
+  WikiPageCreate,
+  WikiPageUpdate,
+  WikiListResponse,
+  BotStatusResponse,
+} from '../types.js'
+
+export interface APIClientConfig extends APIConfig {
+  botDiscordId?: string
+}
 
 export class APIClient {
   private static instance: APIClient | null = null
 
   private baseUrl: string
+  private botDiscordId: string | null
 
-  private constructor(config: APIConfig) {
+  private constructor(config: APIClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '') // Remove trailing slash
+    this.botDiscordId = config.botDiscordId || null
   }
 
   /**
@@ -30,14 +46,21 @@ export class APIClient {
   /**
    * Initialize the client with config
    */
-  static initialize(config: APIConfig): APIClient {
+  static initialize(config: APIClientConfig): APIClient {
     APIClient.instance = new APIClient(config)
     return APIClient.instance
   }
 
   /**
+   * Set the bot's Discord ID for authentication
+   */
+  setBotDiscordId(discordId: string): void {
+    this.botDiscordId = discordId
+  }
+
+  /**
    * Make an API request
-   * Auth is handled via Discord ID in the request body where needed
+   * Includes bot authentication if botDiscordId is set
    */
   private async request<T>(
     endpoint: string,
@@ -47,8 +70,13 @@ export class APIClient {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'X-Bot-Source': 'fumblebot', // Identify requests from FumbleBot
+      'X-Bot-Source': 'fumblebot',
       ...(options.headers as Record<string, string>),
+    }
+
+    // Add bot authentication header if configured
+    if (this.botDiscordId) {
+      headers['X-Discord-Bot-Id'] = this.botDiscordId
     }
 
     const response = await fetch(url, {
@@ -63,6 +91,123 @@ export class APIClient {
 
     return response.json() as Promise<T>
   }
+
+  // ===========================================
+  // Bot Status
+  // ===========================================
+
+  /**
+   * Check bot authentication status with the API
+   */
+  async getBotStatus(): Promise<BotStatusResponse> {
+    try {
+      return await this.request<BotStatusResponse>('/api/bot/status', {
+        method: 'GET',
+      })
+    } catch (error) {
+      return {
+        status: 'error',
+        authenticated: false,
+        timestamp: new Date().toISOString(),
+      }
+    }
+  }
+
+  // ===========================================
+  // Wiki Operations
+  // ===========================================
+
+  /**
+   * List all wiki pages
+   */
+  async listWikiPages(): Promise<WikiPage[]> {
+    const response = await this.request<WikiListResponse>('/api/wiki', {
+      method: 'GET',
+    })
+    return response.pages
+  }
+
+  /**
+   * Get a single wiki page by ID
+   */
+  async getWikiPage(id: string): Promise<WikiPage> {
+    return this.request<WikiPage>(`/api/wiki/${id}`, {
+      method: 'GET',
+    })
+  }
+
+  /**
+   * Get a wiki page by slug
+   */
+  async getWikiPageBySlug(slug: string): Promise<WikiPage | null> {
+    try {
+      const pages = await this.listWikiPages()
+      return pages.find(p => p.slug === slug) || null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Create a new wiki page
+   */
+  async createWikiPage(data: WikiPageCreate): Promise<WikiPage> {
+    return this.request<WikiPage>('/api/wiki', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  /**
+   * Update an existing wiki page
+   */
+  async updateWikiPage(id: string, data: WikiPageUpdate): Promise<WikiPage> {
+    return this.request<WikiPage>(`/api/wiki/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  /**
+   * Delete a wiki page (soft delete)
+   */
+  async deleteWikiPage(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/api/wiki/${id}`, {
+      method: 'DELETE',
+    })
+  }
+
+  /**
+   * Create or update a wiki page by slug
+   * Useful for bot operations that may need to create or update
+   */
+  async upsertWikiPage(
+    slug: string,
+    data: Omit<WikiPageCreate, 'slug'> & Partial<WikiPageUpdate>
+  ): Promise<WikiPage> {
+    const existing = await this.getWikiPageBySlug(slug)
+
+    if (existing) {
+      return this.updateWikiPage(existing.id, {
+        title: data.title,
+        content: data.content,
+        category: data.category,
+        isPublished: data.isPublished,
+        changeNote: data.changeNote,
+      })
+    }
+
+    return this.createWikiPage({
+      slug,
+      title: data.title,
+      category: data.category,
+      content: data.content,
+    })
+  }
+
+  // ===========================================
+  // User Operations
+  // ===========================================
 
   /**
    * Get user status by Discord ID
@@ -89,6 +234,10 @@ export class APIClient {
       body: JSON.stringify(data),
     })
   }
+
+  // ===========================================
+  // Session Operations
+  // ===========================================
 
   /**
    * Get user session data
@@ -124,6 +273,10 @@ export class APIClient {
       body: JSON.stringify({ code, discordId }),
     })
   }
+
+  // ===========================================
+  // Stats Operations
+  // ===========================================
 
   /**
    * Get user's dice statistics
@@ -172,6 +325,10 @@ export class APIClient {
       return null
     }
   }
+
+  // ===========================================
+  // Health Check
+  // ===========================================
 
   /**
    * Health check
