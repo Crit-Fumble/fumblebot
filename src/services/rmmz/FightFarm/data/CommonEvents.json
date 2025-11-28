@@ -1,0 +1,23 @@
+[
+null,
+{"id":1,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":2,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":3,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":4,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":5,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":6,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":7,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":8,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":9,"list":[{"code":122,"indent":0,"parameters":[101,101,0,3,5,-1,0]},{"code":122,"indent":0,"parameters":[102,102,0,3,5,-1,1]},{"code":122,"indent":0,"parameters":[103,103,0,3,7,0,0]},{"code":285,"indent":0,"parameters":[104,0,1,101,102]},{"code":285,"indent":0,"parameters":[105,1,1,101,102]},{"code":285,"indent":0,"parameters":[110,6,1,101,102]},{"code":285,"indent":0,"parameters":[106,2,1,101,102]},{"code":285,"indent":0,"parameters":[107,3,1,101,102]},{"code":285,"indent":0,"parameters":[108,4,1,101,102]},{"code":285,"indent":0,"parameters":[109,5,1,101,102]},{"code":122,"indent":0,"parameters":[111,111,0,3,5,-1,0]},{"code":122,"indent":0,"parameters":[112,112,0,3,5,-1,1]},{"code":111,"indent":0,"parameters":[6,-1,2]},{"code":122,"indent":1,"parameters":[111,111,1,0,1]},{"code":0,"indent":1,"parameters":[]},{"code":412,"indent":0,"parameters":[]},{"code":111,"indent":0,"parameters":[6,-1,4]},{"code":122,"indent":1,"parameters":[112,112,2,0,1]},{"code":0,"indent":1,"parameters":[]},{"code":412,"indent":0,"parameters":[]},{"code":111,"indent":0,"parameters":[6,-1,6]},{"code":122,"indent":1,"parameters":[112,112,1,0,1]},{"code":0,"indent":1,"parameters":[]},{"code":412,"indent":0,"parameters":[]},{"code":111,"indent":0,"parameters":[6,-1,8]},{"code":122,"indent":1,"parameters":[111,111,2,0,1]},{"code":0,"indent":1,"parameters":[]},{"code":412,"indent":0,"parameters":[]},{"code":285,"indent":0,"parameters":[113,0,1,111,112]},{"code":285,"indent":0,"parameters":[114,1,1,111,112]},{"code":285,"indent":0,"parameters":[119,6,1,111,112]},{"code":285,"indent":0,"parameters":[115,2,1,111,112]},{"code":285,"indent":0,"parameters":[116,3,1,111,112]},{"code":285,"indent":0,"parameters":[117,4,1,111,112]},{"code":285,"indent":0,"parameters":[118,5,1,111,112]},{"code":111,"indent":0,"parameters":[1,103,0,21,0]},{"code":108,"indent":1,"parameters":["Farm Map"]},{"code":0,"indent":1,"parameters":[]},{"code":412,"indent":0,"parameters":[]},{"code":111,"indent":0,"parameters":[1,103,0,2,0]},{"code":108,"indent":1,"parameters":["Region Map"]},{"code":0,"indent":1,"parameters":[]},{"code":412,"indent":0,"parameters":[]},{"code":108,"indent":0,"parameters":["How to tell if character has no armor equipped?"]},{"code":0,"indent":0,"parameters":[]}],"name":"Update Char Vars","switchId":1,"trigger":0},
+{"id":10,"list":[{"code":117,"indent":0,"parameters":[9]},{"code":111,"indent":0,"parameters":[1,113,0,1,0]},{"code":0,"indent":1,"parameters":[]},{"code":412,"indent":0,"parameters":[]},{"code":0,"indent":0,"parameters":[]}],"name":"Shovel","switchId":1,"trigger":0},
+{"id":11,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":12,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":13,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":14,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":15,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":16,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":17,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":18,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":19,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0},
+{"id":20,"list":[{"code":0,"indent":0,"parameters":[]}],"name":"","switchId":1,"trigger":0}
+]
