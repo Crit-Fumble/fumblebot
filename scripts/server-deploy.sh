@@ -2,8 +2,22 @@
 # FumbleBot Server-Side Deploy Script
 # This script runs ON the droplet to pull latest changes and deploy
 # Can be triggered manually via SSH or by a webhook
+#
+# Usage: bash scripts/server-deploy.sh [--force]
+#   --force: Force rebuild even if code is up to date
 
 set -e
+
+# Parse arguments
+FORCE_DEPLOY=false
+for arg in "$@"; do
+    case $arg in
+        --force|-f)
+            FORCE_DEPLOY=true
+            shift
+            ;;
+    esac
+done
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -54,9 +68,14 @@ git fetch origin main
 LOCAL=$(git rev-parse HEAD)
 REMOTE=$(git rev-parse origin/main)
 
-if [ "$LOCAL" = "$REMOTE" ]; then
+if [ "$LOCAL" = "$REMOTE" ] && [ "$FORCE_DEPLOY" = false ]; then
     log "${GREEN}Already up to date. No deployment needed.${NC}"
+    log "${YELLOW}Use --force to rebuild anyway.${NC}"
     exit 0
+fi
+
+if [ "$LOCAL" = "$REMOTE" ] && [ "$FORCE_DEPLOY" = true ]; then
+    log "${YELLOW}Code is up to date, but --force specified. Rebuilding...${NC}"
 fi
 
 log "Current: $LOCAL"

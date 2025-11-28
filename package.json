@@ -76,7 +76,7 @@
     "pre-generate:rules": "tsx scripts/pre-generate-content.ts --rules-only",
     "prepare": "husky",
     "scan:secrets": "bash scripts/scan-secrets.sh",
-    "deploy": "ssh root@159.203.126.144 'cd /root/fumblebot && bash scripts/server-deploy.sh'",
+    "deploy": "ssh root@159.203.126.144 'cd /root/fumblebot && bash scripts/server-deploy.sh --force'",
     "deploy:setup": "bash scripts/setup-server-git.sh",
     "push": "bash scripts/push-and-deploy.sh",
     "commands:list": "tsx scripts/sync-commands.ts --list",
