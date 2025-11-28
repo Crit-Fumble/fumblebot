@@ -18,9 +18,9 @@ import {
   ListToolsRequestSchema,
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import { FoundryClient } from '../foundry/client.js';
-import { getScreenshotService } from '../foundry/screenshot.js';
-import { AIService } from '../ai/service.js';
+import { FoundryClient } from '../services/foundry/client.js';
+import { getScreenshotService } from '../services/foundry/screenshot.js';
+import { AIService } from '../services/ai/service.js';
 import { readFile } from 'fs/promises';
 import type { PrismaClient } from '@prisma/client';
 

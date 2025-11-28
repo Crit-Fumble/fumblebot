@@ -1,0 +1,158 @@
+/**
+ * Authentication Handlers
+ * OAuth2 token exchange and authentication for Discord
+ */
+
+import type { Request, Response } from 'express';
+import type { PlatformServerConfig } from '../models/types.js';
+
+/**
+ * Handle OAuth2 token exchange for Discord Activity SDK
+ * The Activity frontend sends the authorization code, we exchange it for an access_token
+ */
+export async function handleTokenExchange(req: Request, res: Response): Promise<void> {
+  const { code } = req.body;
+
+  if (!code) {
+    res.status(400).json({ error: 'Missing authorization code' });
+    return;
+  }
+
+  try {
+    const response = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.FUMBLEBOT_DISCORD_CLIENT_ID!,
+        client_secret: process.env.FUMBLEBOT_DISCORD_CLIENT_SECRET!,
+        grant_type: 'authorization_code',
+        code,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Platform] Token exchange failed:', errorText);
+      res.status(400).json({ error: 'Token exchange failed' });
+      return;
+    }
+
+    const tokenData = await response.json();
+    res.json({ access_token: tokenData.access_token });
+  } catch (error) {
+    console.error('[Platform] Token exchange error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+/**
+ * Handle OAuth2 callback for web-based authentication
+ * Receives code from Discord redirect, exchanges for token, stores in session
+ */
+export async function handleOAuthCallback(
+  req: Request,
+  res: Response,
+  config: PlatformServerConfig
+): Promise<void> {
+  const { code, error: oauthError } = req.query;
+
+  if (oauthError) {
+    res.status(400).send(`
+      <!DOCTYPE html>
+      <html><head><title>Auth Error</title></head>
+      <body style="background:#2b2d31;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;">
+        <div style="text-align:center;">
+          <h1>Authentication Error</h1>
+          <p>${oauthError}</p>
+          <a href="/" style="color:#5865f2;">Go back</a>
+        </div>
+      </body></html>
+    `);
+    return;
+  }
+
+  if (!code || typeof code !== 'string') {
+    res.status(400).send('Missing authorization code');
+    return;
+  }
+
+  try {
+    // Exchange code for access token
+    const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.FUMBLEBOT_DISCORD_CLIENT_ID!,
+        client_secret: process.env.FUMBLEBOT_DISCORD_CLIENT_SECRET!,
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: `${config.publicUrl}/auth/callback`,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      console.error('[Platform] Web OAuth token exchange failed:', errorText);
+      res.status(400).send('Token exchange failed');
+      return;
+    }
+
+    const tokenData = await tokenResponse.json();
+
+    // Fetch user info
+    const userResponse = await fetch('https://discord.com/api/users/@me', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+
+    if (!userResponse.ok) {
+      res.status(400).send('Failed to fetch user info');
+      return;
+    }
+
+    const user = await userResponse.json();
+
+    // Success page that stores auth in localStorage and redirects
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Authentication Successful</title>
+        <style>
+          body { background:#2b2d31; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; }
+          .container { text-align:center; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Welcome, ${user.username}!</h1>
+          <p>Redirecting...</p>
+        </div>
+        <script>
+          // Store auth in localStorage (temporary solution)
+          localStorage.setItem('fumblebot_auth', JSON.stringify({
+            user: ${JSON.stringify({ id: user.id, username: user.username, avatar: user.avatar })},
+            access_token: '${tokenData.access_token}',
+            expires_at: Date.now() + (${tokenData.expires_in} * 1000)
+          }));
+          // Redirect to main page
+          window.location.href = '/';
+        </script>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('[Platform] Web OAuth callback error:', error);
+    res.status(500).send('Internal server error');
+  }
+}
+
+/**
+ * Get current authenticated user from session/localStorage
+ * For now, returns placeholder - full impl requires session middleware
+ */
+export function handleGetAuthUser(req: Request, res: Response): void {
+  // TODO: Implement proper session-based auth
+  // For now, this endpoint exists for the frontend to check
+  // The actual auth state is managed client-side in localStorage (temporary)
+  res.status(401).json({ error: 'Not authenticated' });
+}

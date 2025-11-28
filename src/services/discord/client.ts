@@ -14,7 +14,7 @@ import {
   type Message,
   ActivityType,
 } from 'discord.js'
-import type { DiscordConfig } from '../types.js'
+import type { DiscordConfig } from '../../models/types.js'
 import { CommandRegistry } from './commands/registry.js'
 import { handleInteraction } from './handlers/interaction.js'
 import { handleMessage } from './handlers/message.js'

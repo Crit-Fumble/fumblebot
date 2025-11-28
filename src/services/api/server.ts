@@ -10,7 +10,7 @@ import cookieParser from 'cookie-parser'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { ExpressAuth } from '@auth/express'
 import Discord from '@auth/express/providers/discord'
-import { loadConfig } from '../config.js'
+import { loadConfig } from '../../config.js'
 import { db } from '../db/index.js'
 import type { FumbleBotClient } from '../discord/client.js'
 

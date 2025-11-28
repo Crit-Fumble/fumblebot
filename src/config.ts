@@ -3,7 +3,7 @@
  * Loads and validates configuration from environment variables
  */
 
-import type { BotConfig, DiscordConfig, OpenAIConfig, AnthropicConfig, APIConfig, DatabaseConfig, GradientConfig } from './types.js'
+import type { BotConfig, DiscordConfig, OpenAIConfig, AnthropicConfig, APIConfig, DatabaseConfig, GradientConfig } from './models/types.js'
 
 function getEnv(key: string, required = true): string {
   const value = process.env[key]

@@ -21,7 +21,7 @@
  * @see https://docs.digitalocean.com/products/gradient-ai-platform/
  */
 
-import type { GradientConfig } from '../types.js'
+import type { GradientConfig } from '../../models/types.js'
 
 export interface GradientCompletionOptions {
   model?: string

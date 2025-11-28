@@ -18,7 +18,7 @@ import type {
   AICompletionResult,
   OpenAIConfig,
   AnthropicConfig,
-} from '../types.js'
+} from '../../models/types.js'
 
 // Anthropic model constants
 const CLAUDE_SONNET = 'claude-sonnet-4-20250514'

@@ -13,7 +13,7 @@ import type {
   WikiPageUpdate,
   WikiListResponse,
   BotStatusResponse,
-} from '../types.js'
+} from '../../models/types.js'
 
 export interface APIClientConfig extends APIConfig {
   botDiscordId?: string

@@ -45,8 +45,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "activity:dev": "tsx src/discord/activity/server.ts",
-    "activity:start": "node dist/discord/activity/server.js",
+    "platform:dev": "tsx src/platform/server.ts",
+    "platform:start": "node dist/platform/server.js",
     "clean": "rm -rf dist",
     "test": "vitest --run",
     "test:watch": "vitest --watch",
@@ -73,7 +73,13 @@
     "pre-generate:rules": "tsx scripts/pre-generate-content.ts --rules-only",
     "prepare": "husky",
     "scan:secrets": "bash scripts/scan-secrets.sh",
-    "deploy": "bash scripts/deploy.sh"
+    "deploy": "bash scripts/deploy.sh",
+    "commands:list": "tsx scripts/sync-commands.ts --list",
+    "commands:sync": "tsx scripts/sync-commands.ts --sync",
+    "commands:clear": "tsx scripts/sync-commands.ts --clear",
+    "commands:clear:guild": "tsx scripts/sync-commands.ts --clear-guild",
+    "commands:clear:global": "tsx scripts/sync-commands.ts --clear-global",
+    "commands:reset": "tsx scripts/sync-commands.ts --clear --sync"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
