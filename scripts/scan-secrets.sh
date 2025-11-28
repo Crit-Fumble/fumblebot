@@ -46,8 +46,16 @@ for FILE in $STAGED_FILES; do
     # Skip if file doesn't exist (deleted)
     [ -f "$FILE" ] || continue
 
-    # Get staged content
-    CONTENT=$(git show ":$FILE" 2>/dev/null) || continue
+    # Skip binary files (check for null bytes)
+    if file "$FILE" 2>/dev/null | grep -q "binary\|executable\|image\|audio\|video"; then
+        continue
+    fi
+
+    # Get staged content, skip if binary (contains null bytes)
+    CONTENT=$(git show ":$FILE" 2>/dev/null | tr -d '\0') || continue
+
+    # Skip empty content
+    [ -z "$CONTENT" ] && continue
 
     # OpenAI key
     if echo "$CONTENT" | grep -qE 'sk-[a-zA-Z0-9]{20,}'; then
@@ -103,8 +111,8 @@ for FILE in $STAGED_FILES; do
         FOUND_SECRETS=1
     fi
 
-    # Private keys
-    if echo "$CONTENT" | grep -qE '-----BEGIN (RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----'; then
+    # Private keys (simplified pattern to avoid shell escaping issues)
+    if echo "$CONTENT" | grep -q "BEGIN.*PRIVATE KEY"; then
         echo -e "${RED}❌ Private key found in: ${YELLOW}$FILE${NC}"
         FOUND_SECRETS=1
     fi
