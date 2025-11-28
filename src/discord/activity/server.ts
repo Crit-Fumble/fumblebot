@@ -43,18 +43,44 @@ export class ActivityServer {
     // this.app.use(express.static(path.join(__dirname, '../../../public/activity')));
 
     // CORS for Discord iframe
+    // Discord Activities are served from *.discordsays.com
+    const DISCORD_CLIENT_ID = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '1443525084256931880';
+    const allowedOrigins = [
+      'https://discord.com',
+      `https://${DISCORD_CLIENT_ID}.discordsays.com`,
+      'https://discordsays.com',
+    ];
+
     this.app.use((req, res, next) => {
-      res.header('Access-Control-Allow-Origin', 'https://discord.com');
+      const origin = req.headers.origin;
+      if (origin && allowedOrigins.some(allowed => origin.startsWith(allowed.replace('https://', 'https://')) || origin === allowed)) {
+        res.header('Access-Control-Allow-Origin', origin);
+      } else {
+        // Default to discord.com for non-matching origins
+        res.header('Access-Control-Allow-Origin', 'https://discord.com');
+      }
       res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
       res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       res.header('Access-Control-Allow-Credentials', 'true');
+
+      // Handle preflight
+      if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+      }
       next();
     });
 
     // Security headers for iframe embedding
+    // Discord Activities run in iframes from *.discordsays.com
     this.app.use((req, res, next) => {
-      res.header('X-Frame-Options', 'ALLOW-FROM https://discord.com');
-      res.header('Content-Security-Policy', "frame-ancestors 'self' https://discord.com");
+      // X-Frame-Options is deprecated for multiple origins, use CSP instead
+      // But some browsers still need it, so we set it to SAMEORIGIN as fallback
+      res.header('X-Frame-Options', 'SAMEORIGIN');
+      // Content-Security-Policy frame-ancestors allows multiple origins
+      res.header(
+        'Content-Security-Policy',
+        `frame-ancestors 'self' https://discord.com https://${DISCORD_CLIENT_ID}.discordsays.com https://*.discordsays.com`
+      );
       next();
     });
   }
@@ -107,6 +133,11 @@ export class ActivityServer {
       this.serveSpellLookup(req, res);
     });
 
+    // OAuth2 token exchange for Discord Activity SDK
+    this.app.post('/discord/activity/api/token', (req, res) => {
+      this.handleTokenExchange(req, res);
+    });
+
     // 404 handler
     this.app.use((req, res) => {
       res.status(404).json({ error: 'Not found' });
@@ -114,10 +145,11 @@ export class ActivityServer {
   }
 
   /**
-   * Serve main activity landing page
+   * Serve main activity landing page with Discord SDK integration
    */
   private serveActivity(req: Request, res: Response) {
-    // TODO: Serve actual React/Vue app
+    const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID;
+
     res.send(`
 <!DOCTYPE html>
 <html lang="en">
@@ -126,119 +158,222 @@ export class ActivityServer {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FumbleBot Activity</title>
   <style>
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 20px;
+      padding: 0;
       font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
       background: #2b2d31;
       color: #ffffff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
     .container {
-      max-width: 800px;
-      margin: 0 auto;
-    }
-    .header {
       text-align: center;
-      margin-bottom: 40px;
+      max-width: 600px;
+      padding: 40px 20px;
     }
-    .header h1 {
+    h1 {
+      font-size: 48px;
+      margin: 0 0 20px 0;
+    }
+    .status {
+      padding: 20px;
+      background: #383a40;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-size: 16px;
+    }
+    .status.loading { color: #b5bac1; }
+    .status.success { background: #248046; }
+    .status.error { background: #da373c; }
+    .status.coming-soon { background: #5865f2; }
+    .user-info {
+      margin-top: 30px;
+      padding: 20px;
+      background: #383a40;
+      border-radius: 8px;
+      text-align: left;
+    }
+    .user-info p {
+      margin: 8px 0;
+      font-size: 14px;
+    }
+    .user-info strong {
+      color: #b5bac1;
+    }
+    .admin-content {
+      margin-top: 30px;
+    }
+    .admin-content h2 {
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+    .admin-content p {
+      color: #b5bac1;
+      font-size: 14px;
+    }
+    .coming-soon-box {
+      display: none;
+      margin-top: 30px;
+      padding: 40px;
+      background: linear-gradient(135deg, #5865f2 0%, #eb459e 100%);
+      border-radius: 12px;
+    }
+    .coming-soon-box h2 {
       font-size: 32px;
       margin: 0 0 10px 0;
     }
-    .header p {
-      color: #b5bac1;
-      margin: 0;
-    }
-    .activities {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 20px;
-    }
-    .activity-card {
-      background: #383a40;
-      border-radius: 8px;
-      padding: 20px;
-      cursor: pointer;
-      transition: all 0.2s;
-      text-decoration: none;
-      color: inherit;
-      display: block;
-    }
-    .activity-card:hover {
-      background: #404249;
-      transform: translateY(-2px);
-    }
-    .activity-icon {
-      font-size: 48px;
-      margin-bottom: 10px;
-    }
-    .activity-title {
+    .coming-soon-box p {
       font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 5px;
+      margin: 0;
+      opacity: 0.9;
     }
-    .activity-description {
-      font-size: 14px;
-      color: #b5bac1;
-    }
-    .badge {
-      display: inline-block;
-      background: #5865f2;
-      color: white;
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 4px;
-      margin-left: 5px;
+    .debug-info {
+      margin-top: 20px;
+      padding: 15px;
+      background: #1e1f22;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      text-align: left;
+      max-height: 200px;
+      overflow-y: auto;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>🎲 FumbleBot Activities</h1>
-      <p>Interactive TTRPG tools for your Discord server</p>
+    <h1>FumbleBot</h1>
+    <div id="status" class="status loading">Initializing Discord Activity...</div>
+    <div id="user-info" class="user-info" style="display:none;"></div>
+    <div id="admin-content" class="admin-content" style="display:none;">
+      <h2>Hello World!</h2>
+      <p>Discord Activity is working. You have administrator access.</p>
     </div>
-
-    <div class="activities">
-      <a href="/discord/activity/dice" class="activity-card">
-        <div class="activity-icon">🎲</div>
-        <div class="activity-title">Dice Roller</div>
-        <div class="activity-description">Roll dice with your party in real-time</div>
-      </a>
-
-      <a href="/discord/activity/initiative" class="activity-card">
-        <div class="activity-icon">⚔️</div>
-        <div class="activity-title">Initiative Tracker</div>
-        <div class="activity-description">Track turn order during combat</div>
-      </a>
-
-      <a href="/discord/activity/character/new" class="activity-card">
-        <div class="activity-icon">📜</div>
-        <div class="activity-title">Character Sheet</div>
-        <div class="activity-description">View and edit character stats</div>
-      </a>
-
-      <a href="/discord/activity/map" class="activity-card">
-        <div class="activity-icon">🗺️</div>
-        <div class="activity-title">Map Viewer <span class="badge">BETA</span></div>
-        <div class="activity-description">Share and annotate battle maps</div>
-      </a>
-
-      <a href="/discord/activity/spells" class="activity-card">
-        <div class="activity-icon">✨</div>
-        <div class="activity-title">Spell Lookup</div>
-        <div class="activity-description">Quick reference for spells and abilities</div>
-      </a>
+    <div id="coming-soon" class="coming-soon-box">
+      <h2>Coming March 2026</h2>
+      <p>FumbleBot Activities are currently in development.</p>
     </div>
+    <div id="debug" class="debug-info" style="display:none;"></div>
   </div>
 
-  <script>
-    // Discord Activity SDK integration
-    // TODO: Add Discord Activity SDK
-    console.log('FumbleBot Activity loaded');
+  <script type="module">
+    import { DiscordSDK } from 'https://esm.sh/@discord/embedded-app-sdk@2.4.0';
 
-    // Example: Send message to Discord
-    // window.parent.postMessage({ type: 'ACTIVITY_READY' }, 'https://discord.com');
+    const CLIENT_ID = '${clientId}';
+    const ADMINISTRATOR = 0x8n; // Administrator permission bit
+
+    const statusEl = document.getElementById('status');
+    const userInfoEl = document.getElementById('user-info');
+    const adminContentEl = document.getElementById('admin-content');
+    const comingSoonEl = document.getElementById('coming-soon');
+    const debugEl = document.getElementById('debug');
+
+    // Enable debug mode with ?debug=1
+    const urlParams = new URLSearchParams(window.location.search);
+    const debugMode = urlParams.get('debug') === '1';
+    if (debugMode) debugEl.style.display = 'block';
+
+    function log(msg) {
+      console.log('[FumbleBot]', msg);
+      if (debugMode) {
+        debugEl.innerHTML += msg + '<br>';
+        debugEl.scrollTop = debugEl.scrollHeight;
+      }
+    }
+
+    function setStatus(message, type = 'loading') {
+      statusEl.textContent = message;
+      statusEl.className = 'status ' + type;
+    }
+
+    async function main() {
+      try {
+        // Step 1: Initialize the SDK
+        log('Initializing Discord SDK...');
+        setStatus('Connecting to Discord...');
+        const discordSdk = new DiscordSDK(CLIENT_ID);
+
+        // Step 2: Wait for SDK to be ready
+        log('Waiting for SDK ready...');
+        await discordSdk.ready();
+        log('SDK ready! Instance ID: ' + discordSdk.instanceId);
+
+        // Step 3: Authorize with Discord
+        log('Requesting authorization...');
+        setStatus('Authorizing...');
+        const { code } = await discordSdk.commands.authorize({
+          client_id: CLIENT_ID,
+          response_type: 'code',
+          state: '',
+          prompt: 'none',
+          scope: ['identify', 'guilds.members.read'],
+        });
+        log('Got authorization code');
+
+        // Step 4: Exchange code for access token
+        log('Exchanging token...');
+        setStatus('Authenticating...');
+        const tokenResponse = await fetch('/.proxy/discord/activity/api/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+
+        if (!tokenResponse.ok) {
+          const err = await tokenResponse.text();
+          throw new Error('Token exchange failed: ' + err);
+        }
+
+        const { access_token } = await tokenResponse.json();
+        log('Got access token');
+
+        // Step 5: Authenticate with the SDK
+        log('Authenticating with SDK...');
+        const auth = await discordSdk.commands.authenticate({ access_token });
+        log('Authenticated as: ' + auth.user.username);
+
+        // Step 6: Check permissions
+        log('Checking permissions...');
+        setStatus('Checking permissions...');
+        const { permissions } = await discordSdk.commands.getChannelPermissions();
+        const permBigInt = BigInt(permissions);
+        log('Permissions: ' + permissions);
+
+        // Check for ADMINISTRATOR permission
+        const isAdmin = (permBigInt & ADMINISTRATOR) === ADMINISTRATOR;
+        log('Is admin: ' + isAdmin);
+
+        if (!isAdmin) {
+          // Show coming soon message for non-admins
+          setStatus('FumbleBot Activities', 'coming-soon');
+          comingSoonEl.style.display = 'block';
+          return;
+        }
+
+        // Step 7: Success! Show admin content
+        setStatus('Welcome, Administrator!', 'success');
+        userInfoEl.style.display = 'block';
+        userInfoEl.innerHTML =
+          '<p><strong>User:</strong> ' + auth.user.username + '</p>' +
+          '<p><strong>User ID:</strong> ' + auth.user.id + '</p>' +
+          '<p><strong>Guild ID:</strong> ' + (discordSdk.guildId || 'N/A') + '</p>' +
+          '<p><strong>Channel ID:</strong> ' + (discordSdk.channelId || 'N/A') + '</p>' +
+          '<p><strong>Instance ID:</strong> ' + discordSdk.instanceId + '</p>';
+        adminContentEl.style.display = 'block';
+
+      } catch (error) {
+        console.error('Activity initialization failed:', error);
+        log('ERROR: ' + error.message);
+        setStatus('Error: ' + error.message, 'error');
+      }
+    }
+
+    main();
   </script>
 </body>
 </html>
@@ -431,6 +566,45 @@ export class ActivityServer {
       status: 'active',
       participants: [],
     });
+  }
+
+  /**
+   * Handle OAuth2 token exchange for Discord Activity SDK
+   * The Activity frontend sends the authorization code, we exchange it for an access_token
+   */
+  private async handleTokenExchange(req: Request, res: Response) {
+    const { code } = req.body;
+
+    if (!code) {
+      res.status(400).json({ error: 'Missing authorization code' });
+      return;
+    }
+
+    try {
+      const response = await fetch('https://discord.com/api/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: process.env.FUMBLEBOT_DISCORD_CLIENT_ID!,
+          client_secret: process.env.FUMBLEBOT_DISCORD_CLIENT_SECRET!,
+          grant_type: 'authorization_code',
+          code,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Activity] Token exchange failed:', errorText);
+        res.status(400).json({ error: 'Token exchange failed' });
+        return;
+      }
+
+      const tokenData = await response.json();
+      res.json({ access_token: tokenData.access_token });
+    } catch (error) {
+      console.error('[Activity] Token exchange error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   }
 
   /**

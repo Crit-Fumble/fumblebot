@@ -1,0 +1,2 @@
+# Secret scanner pre-commit hook
+bash scripts/scan-secrets.sh

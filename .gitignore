@@ -36,6 +36,9 @@ yarn-error.log*
 # Testing
 coverage/
 .nyc_output/
+tests/results/
+playwright-report/
+test-results/
 
 # Prisma
 prisma/*.db

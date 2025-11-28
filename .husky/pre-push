@@ -1,0 +1,19 @@
+# Security scan before pushing
+# Blocks push to main/master if secrets are detected
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+REMOTE_REF=$(git rev-parse --abbrev-ref @{upstream} 2>/dev/null || echo "")
+
+# Check if pushing to main or master
+if [[ "$BRANCH" == "main" ]] || [[ "$BRANCH" == "master" ]] || [[ "$REMOTE_REF" == *"main"* ]] || [[ "$REMOTE_REF" == *"master"* ]]; then
+    echo "🔒 Pushing to protected branch - running security scan..."
+    bash scripts/scan-secrets.sh
+
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "❌ Push to $BRANCH blocked due to security scan failure"
+        exit 1
+    fi
+
+    echo "✅ Security scan passed - proceeding with push"
+fi
