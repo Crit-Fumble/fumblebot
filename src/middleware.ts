@@ -88,16 +88,17 @@ export function setupSecurityHeaders(app: Application): void {
     // But some browsers still need it, so we set it to SAMEORIGIN as fallback
     res.header('X-Frame-Options', 'SAMEORIGIN');
 
-    // Content-Security-Policy with full directives for Discord Activity
+    // Content-Security-Policy with strict directives for Discord Activity
+    // No unsafe-inline - all scripts and styles are bundled by Vite/React
     const csp = [
       // Allow framing from Discord and our domains
       `frame-ancestors 'self' https://discord.com https://${DISCORD_CLIENT_ID}.discordsays.com https://*.discordsays.com https://www.crit-fumble.com https://crit-fumble.com https://fumblebot.crit-fumble.com`,
-      // Allow scripts from self, esm.sh (Discord SDK), and inline scripts
-      `script-src 'self' 'unsafe-inline' https://esm.sh`,
-      // Allow styles from self and inline
-      `style-src 'self' 'unsafe-inline'`,
-      // Allow connections to Discord API, our API, and esm.sh
-      `connect-src 'self' https://discord.com https://*.discord.com https://esm.sh https://*.discordsays.com`,
+      // Allow scripts from self only (no unsafe-inline needed with bundled React)
+      `script-src 'self'`,
+      // Allow styles from self only (Tailwind CSS is bundled)
+      `style-src 'self'`,
+      // Allow connections to Discord API, our API
+      `connect-src 'self' https://discord.com https://*.discord.com https://*.discordsays.com`,
       // Allow images from Discord CDN
       `img-src 'self' https://cdn.discordapp.com https://*.discordapp.com data:`,
       // Default fallback

@@ -12,9 +12,15 @@
  */
 
 import express, { type Request, type Response } from 'express';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { routes, printRouteTable } from './routes.js';
 import { setupAllMiddleware } from './middleware.js';
 import { detectPlatform } from './controllers/detection.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import {
   handleTokenExchange,
   handleOAuthCallback,
@@ -30,6 +36,20 @@ import {
   handleDeleteSystem,
   handleSeedSystems,
 } from './controllers/index.js';
+import {
+  handleExecuteCommand,
+  handleListCommands,
+  handleExecuteCommandString,
+} from './controllers/commands.js';
+import {
+  handleChat,
+  handleChatHistory,
+  validateBotSecret,
+} from './controllers/chat.js';
+import {
+  chatRateLimiter,
+  commandRateLimiter,
+} from './middleware/index.js';
 import {
   getDiscordActivityHtml,
   getWebDashboardHtml,
@@ -63,14 +83,46 @@ export class PlatformServer {
    */
   private setupMiddleware(): void {
     setupAllMiddleware(this.app);
+
+    // Serve static files from React build output (dist/public)
+    const publicPath = path.join(__dirname, 'public');
+    if (fs.existsSync(publicPath)) {
+      this.app.use(express.static(publicPath, {
+        // Cache static assets for 1 year (they have content hashes)
+        maxAge: '1y',
+        // But not index.html
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('index.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+          }
+        },
+      }));
+    }
   }
 
   /**
    * Setup Express routes from routes.ts definitions
    */
   private setupRoutes(): void {
-    // Register all routes from the routes definition
-    for (const categoryRoutes of Object.values(routes)) {
+    // Register chat routes with bot secret middleware + rate limiting
+    for (const route of routes.chat || []) {
+      const handler = this.getHandler(route.handler);
+      if (handler) {
+        this.app[route.method](route.path, validateBotSecret, chatRateLimiter, handler);
+      }
+    }
+
+    // Register command routes with rate limiting
+    for (const route of routes.commands || []) {
+      const handler = this.getHandler(route.handler);
+      if (handler) {
+        this.app[route.method](route.path, commandRateLimiter, handler);
+      }
+    }
+
+    // Register all other routes from the routes definition
+    for (const [category, categoryRoutes] of Object.entries(routes)) {
+      if (category === 'chat' || category === 'commands') continue; // Already handled above
       for (const route of categoryRoutes) {
         const handler = this.getHandler(route.handler);
         if (handler) {
@@ -148,17 +200,33 @@ export class PlatformServer {
       handlePreviewSystem: (req, res) => handlePreviewSystem(req, res),
       handleDeleteSystem: (req, res) => handleDeleteSystem(req, res),
       handleSeedSystems: (req, res) => handleSeedSystems(req, res),
+
+      // Commands API
+      handleListCommands: (req, res) => handleListCommands(req, res),
+      handleExecuteCommand: (req, res) => handleExecuteCommand(req, res),
+      handleExecuteCommandString: (req, res) => handleExecuteCommandString(req, res),
+
+      // Chat API (website integration)
+      handleChat: (req, res) => handleChat(req, res),
+      handleChatHistory: (req, res) => handleChatHistory(req, res),
     };
 
     return handlers[name] || null;
   }
 
   /**
-   * Serve Discord Activity landing page
+   * Serve Discord Activity landing page (React app)
    */
   private serveDiscordActivity(req: Request, res: Response): void {
-    const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '';
-    res.send(getDiscordActivityHtml(clientId));
+    // Serve the built React app's index.html
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      // Fallback to legacy HTML if React app isn't built
+      const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '';
+      res.send(getDiscordActivityHtml(clientId));
+    }
   }
 
   /**
@@ -170,11 +238,19 @@ export class PlatformServer {
   }
 
   /**
-   * Serve Web Activity Panel (with session auth)
+   * Serve Web Activity Panel (React app with OAuth session auth)
+   * Now uses the same React app as Discord, with platform detection
    */
   private serveWebActivityPanel(req: Request, res: Response): void {
-    const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '';
-    res.send(getWebActivityHtml(clientId, this.config.publicUrl));
+    // Serve the built React app's index.html (same app, different auth flow)
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      // Fallback to legacy HTML if React app isn't built
+      const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '';
+      res.send(getWebActivityHtml(clientId, this.config.publicUrl));
+    }
   }
 
   /**

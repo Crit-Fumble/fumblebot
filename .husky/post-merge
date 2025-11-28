@@ -1,0 +1,21 @@
+# Auto-deploy after merging to main
+# Triggers server-side git pull deployment
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+if [[ "$BRANCH" == "main" ]]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "     Merge to main detected - triggering deployment"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # Check if server is reachable before attempting deploy
+    if ssh -o ConnectTimeout=5 -o BatchMode=yes root@159.203.126.144 'exit' 2>/dev/null; then
+        echo "🚀 Deploying to production..."
+        npm run deploy:git
+    else
+        echo "⚠️  Could not connect to server - skipping auto-deploy"
+        echo "   Run 'npm run deploy:git' manually when ready"
+    fi
+fi

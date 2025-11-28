@@ -73,6 +73,60 @@ export function getWebActivityHtml(clientId: string, publicUrl: string): string 
     ${getCreateCampaignModal()}
     ${getAddCharacterModal()}
     ${getDebugPanel()}
+
+    <!-- Activity Panel -->
+    <div id="activity-panel" class="activity-panel" style="display: none;">
+      <div class="activity-header">
+        <h2>Activity Hub</h2>
+        <button class="btn btn-secondary" onclick="hideActivityPanel()">Back to Dashboard</button>
+      </div>
+
+      <!-- Command Bar -->
+      <div class="command-bar">
+        <input type="text" id="command-input" placeholder="/roll 2d6+3 or type a command..." autocomplete="off" />
+        <button class="btn btn-primary" onclick="executeCommand()">Send</button>
+      </div>
+
+      <!-- Quick Dice Buttons -->
+      <div class="quick-dice">
+        <button class="dice-btn" onclick="quickRoll('1d4')">d4</button>
+        <button class="dice-btn" onclick="quickRoll('1d6')">d6</button>
+        <button class="dice-btn" onclick="quickRoll('1d8')">d8</button>
+        <button class="dice-btn" onclick="quickRoll('1d10')">d10</button>
+        <button class="dice-btn" onclick="quickRoll('1d12')">d12</button>
+        <button class="dice-btn d20" onclick="quickRoll('1d20')">d20</button>
+        <button class="dice-btn" onclick="quickRoll('1d100')">d100</button>
+        <button class="dice-btn" onclick="quickRoll('2d6')">2d6</button>
+      </div>
+
+      <!-- Activity Tabs -->
+      <div class="activity-tabs">
+        <button class="activity-tab active" data-tab="dice" onclick="showActivityTab('dice')">Dice</button>
+        <button class="activity-tab" data-tab="characters" onclick="showActivityTab('characters')">Characters</button>
+        <button class="activity-tab" data-tab="initiative" onclick="showActivityTab('initiative')">Initiative</button>
+      </div>
+
+      <!-- Dice Activity -->
+      <div id="activity-dice" class="activity-content active">
+        <div id="dice-result" class="dice-result">
+          <p class="placeholder">Roll some dice to see results here!</p>
+        </div>
+        <div id="roll-history" class="roll-history">
+          <h3>Roll History</h3>
+          <div id="history-list"></div>
+        </div>
+      </div>
+
+      <!-- Characters Activity -->
+      <div id="activity-characters" class="activity-content" style="display: none;">
+        <p class="placeholder">Character management coming soon...</p>
+      </div>
+
+      <!-- Initiative Activity -->
+      <div id="activity-initiative" class="activity-content" style="display: none;">
+        <p class="placeholder">Initiative tracker coming soon...</p>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -168,6 +222,193 @@ function getWebActivityStyles(): string {
       font-size: 12px;
       color: #80848e;
       margin-top: 16px !important;
+    }
+
+    /* Activity Panel */
+    .activity-panel {
+      background: #2b2d31;
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .activity-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .activity-header h2 {
+      margin: 0;
+    }
+
+    /* Command Bar */
+    .command-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .command-bar input {
+      flex: 1;
+      padding: 12px 16px;
+      background: #1e1f22;
+      border: 1px solid #383a40;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 14px;
+      font-family: monospace;
+    }
+    .command-bar input:focus {
+      outline: none;
+      border-color: #5865f2;
+    }
+    .command-bar input::placeholder {
+      color: #80848e;
+    }
+
+    /* Quick Dice */
+    .quick-dice {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .dice-btn {
+      padding: 10px 16px;
+      background: #383a40;
+      border: none;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .dice-btn:hover {
+      background: #5865f2;
+    }
+    .dice-btn.d20 {
+      background: #5865f2;
+    }
+    .dice-btn.d20:hover {
+      background: #4752c4;
+    }
+
+    /* Activity Tabs */
+    .activity-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #383a40;
+      padding-bottom: 8px;
+    }
+    .activity-tab {
+      padding: 8px 16px;
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      color: #b5bac1;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .activity-tab:hover {
+      background: #383a40;
+      color: #ffffff;
+    }
+    .activity-tab.active {
+      background: #5865f2;
+      color: #ffffff;
+    }
+
+    /* Activity Content */
+    .activity-content {
+      display: none;
+    }
+    .activity-content.active {
+      display: block;
+    }
+    .activity-content .placeholder {
+      color: #80848e;
+      text-align: center;
+      padding: 40px;
+    }
+
+    /* Dice Result */
+    .dice-result {
+      background: #1e1f22;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .dice-result .embed {
+      border-left: 4px solid #7c3aed;
+      padding-left: 16px;
+    }
+    .dice-result .embed.crit {
+      border-color: #22c55e;
+    }
+    .dice-result .embed.fumble {
+      border-color: #ef4444;
+    }
+    .dice-result .embed-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .dice-result .embed-description {
+      color: #b5bac1;
+      margin-bottom: 12px;
+    }
+    .dice-result .embed-fields {
+      display: flex;
+      gap: 20px;
+    }
+    .dice-result .embed-field {
+      flex: 1;
+    }
+    .dice-result .embed-field-name {
+      font-size: 12px;
+      color: #80848e;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .dice-result .embed-field-value {
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    /* Roll History */
+    .roll-history {
+      background: #1e1f22;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .roll-history h3 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      color: #b5bac1;
+    }
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #383a40;
+    }
+    .history-item:last-child {
+      border-bottom: none;
+    }
+    .history-notation {
+      font-family: monospace;
+      color: #5865f2;
+    }
+    .history-result {
+      font-weight: 600;
+    }
+    .history-result.crit {
+      color: #22c55e;
+    }
+    .history-result.fumble {
+      color: #ef4444;
     }
 
     /* Guild Selector */
@@ -795,6 +1036,180 @@ function getWebActivityScript(clientId: string, publicUrl: string): string {
       renderRoleMappings();
       log('Removed role mapping: ' + discordRoleId);
     };
+
+    // ===========================================
+    // Activity Panel & Commands
+    // ===========================================
+
+    const activityPanel = document.getElementById('activity-panel');
+    const diceResultEl = document.getElementById('dice-result');
+    const historyListEl = document.getElementById('history-list');
+    const commandInput = document.getElementById('command-input');
+    let rollHistory = [];
+
+    window.showActivityPanel = function() {
+      adminDashboard.style.display = 'none';
+      serverSettingsPanel.style.display = 'none';
+      activityPanel.style.display = 'block';
+      log('Showing activity panel');
+    };
+
+    window.hideActivityPanel = function() {
+      activityPanel.style.display = 'none';
+      adminDashboard.style.display = 'block';
+    };
+
+    window.showActivityTab = function(tabName) {
+      document.querySelectorAll('.activity-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+      });
+      document.querySelectorAll('.activity-content').forEach(content => {
+        content.style.display = 'none';
+        content.classList.remove('active');
+      });
+      const tabContent = document.getElementById('activity-' + tabName);
+      if (tabContent) {
+        tabContent.style.display = 'block';
+        tabContent.classList.add('active');
+      }
+    };
+
+    window.executeCommand = async function() {
+      const input = commandInput.value.trim();
+      if (!input) return;
+
+      log('Executing command: ' + input);
+      commandInput.value = '';
+
+      try {
+        const response = await fetch('/api/commands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            input: input.startsWith('/') ? input : '/roll ' + input,
+            guildId: selectedGuildId,
+          }),
+        });
+
+        const result = await response.json();
+        log('Command result: ' + JSON.stringify(result));
+
+        if (result.success && result.embed) {
+          displayDiceResult(result.embed, result.data?.roll);
+        } else if (result.message) {
+          displayError(result.message);
+        }
+      } catch (error) {
+        log('Command error: ' + error.message);
+        displayError('Failed to execute command');
+      }
+    };
+
+    window.quickRoll = async function(notation) {
+      log('Quick roll: ' + notation);
+
+      try {
+        const response = await fetch('/api/commands/roll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            dice: notation,
+            guildId: selectedGuildId,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.embed) {
+          displayDiceResult(result.embed, result.data?.roll);
+        } else if (result.message) {
+          displayError(result.message);
+        }
+      } catch (error) {
+        log('Roll error: ' + error.message);
+        displayError('Failed to roll dice');
+      }
+    };
+
+    function displayDiceResult(embed, rollData) {
+      const isCrit = embed.title?.includes('CRITICAL');
+      const isFumble = embed.title?.includes('FUMBLE');
+      const embedClass = isCrit ? 'crit' : isFumble ? 'fumble' : '';
+
+      diceResultEl.innerHTML = \`
+        <div class="embed \${embedClass}">
+          <div class="embed-title">\${embed.title || 'Dice Roll'}</div>
+          <div class="embed-description">\${embed.description || ''}</div>
+          <div class="embed-fields">
+            \${(embed.fields || []).map(field => \`
+              <div class="embed-field">
+                <div class="embed-field-name">\${field.name}</div>
+                <div class="embed-field-value">\${field.value}</div>
+              </div>
+            \`).join('')}
+          </div>
+        </div>
+      \`;
+
+      // Add to history
+      if (rollData) {
+        rollHistory.unshift({
+          notation: rollData.notation,
+          total: rollData.total,
+          isCrit: rollData.isCrit,
+          isFumble: rollData.isFumble,
+          timestamp: new Date(),
+        });
+
+        // Keep only last 20 rolls
+        if (rollHistory.length > 20) rollHistory = rollHistory.slice(0, 20);
+
+        updateHistoryDisplay();
+      }
+    }
+
+    function updateHistoryDisplay() {
+      if (!historyListEl) return;
+
+      if (rollHistory.length === 0) {
+        historyListEl.innerHTML = '<p style="color: #80848e; text-align: center;">No rolls yet</p>';
+        return;
+      }
+
+      historyListEl.innerHTML = rollHistory.map(roll => {
+        const resultClass = roll.isCrit ? 'crit' : roll.isFumble ? 'fumble' : '';
+        return \`
+          <div class="history-item">
+            <span class="history-notation">\${roll.notation}</span>
+            <span class="history-result \${resultClass}">\${roll.total}</span>
+          </div>
+        \`;
+      }).join('');
+    }
+
+    function displayError(message) {
+      diceResultEl.innerHTML = \`
+        <div class="embed fumble">
+          <div class="embed-title">Error</div>
+          <div class="embed-description">\${message}</div>
+        </div>
+      \`;
+    }
+
+    // Handle Enter key in command input
+    if (commandInput) {
+      commandInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          executeCommand();
+        }
+      });
+    }
+
+    // ===========================================
+    // Bot Settings
+    // ===========================================
 
     window.saveBotSettings = async function() {
       if (!selectedGuildId) {

@@ -1,6 +1,6 @@
 /**
- * Dice Commands
- * TTRPG dice rolling functionality
+ * Dice Commands (Discord Integration)
+ * Discord-specific wrapper for cross-platform dice rolling
  */
 
 import {
@@ -9,104 +9,27 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js'
 import type { FumbleBotClient } from '../../client.js'
-
-// Dice roll result
-interface DiceRoll {
-  dice: string
-  rolls: number[]
-  modifier: number
-  total: number
-  isCrit: boolean
-  isFumble: boolean
-}
+import { commandExecutor, type CommandContext, type EmbedData } from '../../../../commands/index.js'
 
 /**
- * Parse and roll dice notation (e.g., "2d6+3", "1d20", "4d6")
+ * Convert cross-platform EmbedData to Discord.js EmbedBuilder
  */
-function rollDice(notation: string): DiceRoll {
-  // Parse notation: NdS+M or NdS-M
-  const match = notation.toLowerCase().match(/^(\d+)?d(\d+)([+-]\d+)?$/i)
+function embedDataToDiscord(embed: EmbedData): EmbedBuilder {
+  const builder = new EmbedBuilder()
 
-  if (!match) {
-    throw new Error(`Invalid dice notation: ${notation}`)
-  }
+  if (embed.title) builder.setTitle(embed.title)
+  if (embed.description) builder.setDescription(embed.description)
+  if (embed.color) builder.setColor(embed.color)
+  if (embed.fields) builder.addFields(embed.fields)
+  if (embed.footer) builder.setFooter(embed.footer)
+  if (embed.timestamp) builder.setTimestamp(new Date(embed.timestamp))
+  if (embed.thumbnail) builder.setThumbnail(embed.thumbnail.url)
+  if (embed.image) builder.setImage(embed.image.url)
 
-  const count = parseInt(match[1] || '1', 10)
-  const sides = parseInt(match[2], 10)
-  const modifier = parseInt(match[3] || '0', 10)
-
-  if (count < 1 || count > 100) {
-    throw new Error('Dice count must be between 1 and 100')
-  }
-
-  if (sides < 2 || sides > 1000) {
-    throw new Error('Dice sides must be between 2 and 1000')
-  }
-
-  // Roll the dice
-  const rolls: number[] = []
-  for (let i = 0; i < count; i++) {
-    rolls.push(Math.floor(Math.random() * sides) + 1)
-  }
-
-  const total = rolls.reduce((sum, roll) => sum + roll, 0) + modifier
-
-  // Check for crit/fumble on d20
-  const isCrit = sides === 20 && count === 1 && rolls[0] === 20
-  const isFumble = sides === 20 && count === 1 && rolls[0] === 1
-
-  return {
-    dice: notation,
-    rolls,
-    modifier,
-    total,
-    isCrit,
-    isFumble,
-  }
+  return builder
 }
 
-/**
- * Create dice roll embed
- */
-function createDiceEmbed(roll: DiceRoll, username: string): EmbedBuilder {
-  let color = 0x7c3aed // Purple default
-
-  if (roll.isCrit) {
-    color = 0x22c55e // Green for crit
-  } else if (roll.isFumble) {
-    color = 0xef4444 // Red for fumble
-  }
-
-  const embed = new EmbedBuilder()
-    .setColor(color)
-    .setTitle(
-      roll.isCrit ? '🎉 CRITICAL HIT!' : roll.isFumble ? '💀 FUMBLE!' : '🎲 Dice Roll'
-    )
-    .setDescription(`**${username}** rolled **${roll.dice}**`)
-    .addFields(
-      {
-        name: 'Rolls',
-        value: `[${roll.rolls.join(', ')}]`,
-        inline: true,
-      },
-      {
-        name: 'Modifier',
-        value: roll.modifier >= 0 ? `+${roll.modifier}` : `${roll.modifier}`,
-        inline: true,
-      },
-      {
-        name: 'Total',
-        value: `**${roll.total}**`,
-        inline: true,
-      }
-    )
-    .setFooter({ text: 'Powered by FumbleBot' })
-    .setTimestamp()
-
-  return embed
-}
-
-// Define slash commands
+// Define slash commands (Discord-specific registration format)
 export const diceCommands = [
   new SlashCommandBuilder()
     .setName('roll')
@@ -131,28 +54,43 @@ export const diceCommands = [
     ),
 ]
 
-// Command handler
+/**
+ * Discord command handler - delegates to cross-platform executor
+ */
 export async function diceHandler(
   interaction: ChatInputCommandInteraction,
   _bot: FumbleBotClient
 ): Promise<void> {
-  const username = interaction.user.displayName || interaction.user.username
+  // Build cross-platform context from Discord interaction
+  const context: CommandContext = {
+    userId: interaction.user.id,
+    username: interaction.user.displayName || interaction.user.username,
+    guildId: interaction.guildId ?? undefined,
+    channelId: interaction.channelId,
+    platform: 'discord',
+  }
 
-  try {
-    const diceNotation = interaction.options.getString('dice', true)
-    const label = interaction.options.getString('label')
-    const isPrivate = interaction.options.getBoolean('private') ?? false
+  // Extract options from interaction
+  const options = {
+    dice: interaction.options.getString('dice', true),
+    label: interaction.options.getString('label') ?? undefined,
+    private: interaction.options.getBoolean('private') ?? false,
+  }
 
-    const roll = rollDice(diceNotation)
-    const embed = createDiceEmbed(roll, username)
+  // Execute through cross-platform command system
+  const result = await commandExecutor.execute('roll', context, options)
 
-    if (label) {
-      embed.setDescription(`**${username}** rolled **${roll.dice}** for *${label}*`)
-    }
-
-    await interaction.reply({ embeds: [embed], ephemeral: isPrivate })
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to roll dice'
-    await interaction.reply({ content: `❌ ${errorMessage}`, ephemeral: true })
+  // Convert result to Discord response
+  if (result.success && result.embed) {
+    const discordEmbed = embedDataToDiscord(result.embed)
+    await interaction.reply({
+      embeds: [discordEmbed],
+      ephemeral: result.ephemeral ?? false,
+    })
+  } else {
+    await interaction.reply({
+      content: result.message || 'Command executed',
+      ephemeral: result.ephemeral ?? true,
+    })
   }
 }

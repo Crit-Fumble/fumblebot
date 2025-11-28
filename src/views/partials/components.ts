@@ -23,6 +23,9 @@ export function getDashboardHeader(): string {
     <div class="dashboard-header">
       <h2>Campaign Dashboard</h2>
       <div class="dashboard-actions">
+        <button class="btn btn-primary btn-icon" onclick="showActivityPanel()" title="Activity Hub">
+          🎲 Activity Hub
+        </button>
         <button class="btn btn-secondary btn-icon" onclick="showServerSettings()" title="Server Settings">
           ⚙️ Settings
         </button>

@@ -19,6 +19,6 @@
       ".prisma/fumblebot": ["./node_modules/.prisma/fumblebot"]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "src/WIP/**/*"]
+  "include": ["src/**/*", "WIP/rmmz"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "src/WIP/**/*", "src/client/**/*"]
 }

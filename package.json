@@ -42,8 +42,11 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:client && tsc",
+    "build:server": "tsc",
+    "build:client": "cd src/client && npm run build",
     "dev": "tsc --watch",
+    "dev:client": "cd src/client && npm run dev",
     "start": "node dist/index.js",
     "platform:dev": "tsx src/server.ts",
     "platform:start": "node dist/server.js",
@@ -74,6 +77,9 @@
     "prepare": "husky",
     "scan:secrets": "bash scripts/scan-secrets.sh",
     "deploy": "bash scripts/deploy.sh",
+    "deploy:git": "ssh root@159.203.126.144 'cd /root/fumblebot && bash scripts/server-deploy.sh'",
+    "deploy:setup": "bash scripts/setup-server-git.sh",
+    "push": "bash scripts/push-and-deploy.sh",
     "commands:list": "tsx scripts/sync-commands.ts --list",
     "commands:sync": "tsx scripts/sync-commands.ts --sync",
     "commands:clear": "tsx scripts/sync-commands.ts --clear",

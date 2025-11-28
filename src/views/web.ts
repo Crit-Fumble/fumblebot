@@ -252,24 +252,22 @@ export function getWebDashboardHtml(
     const userSection = document.getElementById('user-section');
     const userInfo = document.getElementById('user-info');
 
-    // Check for existing auth in localStorage
-    function checkAuth() {
-      const stored = localStorage.getItem('fumblebot_auth');
-      if (stored) {
-        try {
-          const auth = JSON.parse(stored);
-          // Check if token is expired
-          if (auth.expires_at && auth.expires_at > Date.now()) {
-            showAuthenticatedState(auth.user);
+    // Check for existing server-side session auth
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.user) {
+            // Already authenticated, redirect to activity panel
+            window.location.href = '/web/activity';
             return true;
-          } else {
-            // Token expired, clear it
-            localStorage.removeItem('fumblebot_auth');
           }
-        } catch (e) {
-          console.log('Invalid auth data');
-          localStorage.removeItem('fumblebot_auth');
         }
+      } catch (e) {
+        console.log('Auth check error:', e);
       }
       return false;
     }
@@ -295,11 +293,13 @@ export function getWebDashboardHtml(
     // Discord OAuth2 redirect flow (for web, not Activity SDK)
     discordLoginBtn.addEventListener('click', () => {
       const scope = 'identify guilds guilds.members.read';
+      const state = encodeURIComponent('/web/activity'); // Redirect to activity panel after auth
       const authUrl = 'https://discord.com/api/oauth2/authorize' +
         '?client_id=' + CLIENT_ID +
         '&redirect_uri=' + encodeURIComponent(REDIRECT_URI) +
         '&response_type=code' +
-        '&scope=' + encodeURIComponent(scope);
+        '&scope=' + encodeURIComponent(scope) +
+        '&state=' + state;
 
       window.location.href = authUrl;
     });

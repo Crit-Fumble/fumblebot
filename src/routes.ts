@@ -9,14 +9,6 @@
  * - Activity routes: /discord/activity/* - Legacy/specific activity endpoints
  */
 
-import { type Request, type Response } from 'express';
-import type { PlatformServer } from './server.js';
-
-/**
- * Route handler type that receives the server instance
- */
-type RouteHandler = (server: PlatformServer) => (req: Request, res: Response) => void | Promise<void>;
-
 /**
  * Route definition
  */
@@ -162,6 +154,44 @@ export const routes: Record<string, RouteDefinition[]> = {
       path: '/discord/activity/api/session/:sessionId',
       handler: 'handleSessionGet',
       description: 'Get session by ID',
+    },
+  ],
+
+  // Chat API (website → FumbleBot)
+  chat: [
+    {
+      method: 'post',
+      path: '/api/chat',
+      handler: 'handleChat',
+      description: 'Process chat message from website (requires bot secret)',
+    },
+    {
+      method: 'get',
+      path: '/api/chat/history',
+      handler: 'handleChatHistory',
+      description: 'Get chat history for user (requires bot secret)',
+    },
+  ],
+
+  // Cross-platform commands API
+  commands: [
+    {
+      method: 'get',
+      path: '/api/commands',
+      handler: 'handleListCommands',
+      description: 'List all available commands',
+    },
+    {
+      method: 'post',
+      path: '/api/commands',
+      handler: 'handleExecuteCommandString',
+      description: 'Execute command from string input',
+    },
+    {
+      method: 'post',
+      path: '/api/commands/:command',
+      handler: 'handleExecuteCommand',
+      description: 'Execute a specific command',
     },
   ],
 
