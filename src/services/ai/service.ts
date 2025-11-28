@@ -302,7 +302,7 @@ Respond with just the action and a one-sentence reasoning.`,
     })
 
     const toolCall = response.choices[0].message.tool_calls?.[0]
-    if (toolCall?.function.arguments) {
+    if (toolCall?.type === 'function' && toolCall.function.arguments) {
       return JSON.parse(toolCall.function.arguments)
     }
 
@@ -369,7 +369,7 @@ Respond with just the action and a one-sentence reasoning.`,
     })
 
     const toolCall = response.choices[0].message.tool_calls?.[0]
-    if (toolCall?.function.arguments) {
+    if (toolCall?.type === 'function' && toolCall.function.arguments) {
       return JSON.parse(toolCall.function.arguments)
     }
 
