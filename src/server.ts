@@ -21,6 +21,12 @@ import {
   handleGetAuthUser,
   handleSessionCreate,
   handleSessionGet,
+  handleListSystems,
+  handleGetSystem,
+  handleAddSystem,
+  handlePreviewSystem,
+  handleDeleteSystem,
+  handleSeedSystems,
 } from './controllers/index.js';
 import {
   getDiscordActivityHtml,
@@ -128,6 +134,14 @@ export class PlatformServer {
       // Sessions
       handleSessionCreate: (req, res) => handleSessionCreate(req, res),
       handleSessionGet: (req, res) => handleSessionGet(req, res),
+
+      // Foundry Systems
+      handleListSystems: (req, res) => handleListSystems(req, res),
+      handleGetSystem: (req, res) => handleGetSystem(req, res),
+      handleAddSystem: (req, res) => handleAddSystem(req, res),
+      handlePreviewSystem: (req, res) => handlePreviewSystem(req, res),
+      handleDeleteSystem: (req, res) => handleDeleteSystem(req, res),
+      handleSeedSystems: (req, res) => handleSeedSystems(req, res),
     };
 
     return handlers[name] || null;
@@ -218,3 +232,39 @@ export class PlatformServer {
 // Legacy alias for backwards compatibility
 export const ActivityServer = PlatformServer;
 export type ActivityServer = PlatformServer;
+
+// Standalone server entry point
+// Check if this file is being run directly (works with both node and tsx)
+const isMainModule = import.meta.url.includes('server.ts') || import.meta.url.includes('server.js');
+
+if (isMainModule && process.argv[1]?.includes('server')) {
+  const port = parseInt(process.env.PORT || '3000');
+  const config = {
+    port,
+    host: '0.0.0.0',
+    publicUrl: process.env.PUBLIC_URL || 'https://fumblebot.crit-fumble.com',
+  };
+
+  console.log('[Platform] Starting server on port', port);
+
+  const server = new PlatformServer(config);
+
+  server.start().then(() => {
+    console.log('[Platform] Ready at http://localhost:' + port + '/discord/activity');
+  }).catch((err) => {
+    console.error('[Platform] Failed to start:', err);
+    process.exit(1);
+  });
+
+  process.on('SIGINT', async () => {
+    console.log('\n[Platform] Shutting down...');
+    await server.stop();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+    console.log('\n[Platform] Shutting down...');
+    await server.stop();
+    process.exit(0);
+  });
+}

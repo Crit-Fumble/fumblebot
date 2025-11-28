@@ -146,6 +146,46 @@ export const routes: Record<string, RouteDefinition[]> = {
       description: 'Get session by ID',
     },
   ],
+
+  // Foundry Systems management API
+  systems: [
+    {
+      method: 'get',
+      path: '/api/systems',
+      handler: 'handleListSystems',
+      description: 'List all registered Foundry systems',
+    },
+    {
+      method: 'get',
+      path: '/api/systems/:id',
+      handler: 'handleGetSystem',
+      description: 'Get a specific system by ID',
+    },
+    {
+      method: 'post',
+      path: '/api/systems',
+      handler: 'handleAddSystem',
+      description: 'Add a new system from manifest URL',
+    },
+    {
+      method: 'post',
+      path: '/api/systems/preview',
+      handler: 'handlePreviewSystem',
+      description: 'Preview a system manifest without saving',
+    },
+    {
+      method: 'delete',
+      path: '/api/systems/:id',
+      handler: 'handleDeleteSystem',
+      description: 'Remove a registered system',
+    },
+    {
+      method: 'post',
+      path: '/api/systems/seed',
+      handler: 'handleSeedSystems',
+      description: 'Seed with popular systems (admin only)',
+    },
+  ],
 };
 
 /**

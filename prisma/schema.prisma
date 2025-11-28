@@ -28,6 +28,7 @@ model Guild {
   sessions  Session[]
   diceRolls DiceRoll[]
   commands  BotCommand[]
+  campaigns FumbleCampaign[]
 }
 
 model GuildMember {
@@ -120,6 +121,219 @@ model Session {
   guild Guild @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
 
   @@index([guildId])
+}
+
+// ===========================================
+// Campaigns (Discord Activity / Foundry)
+// ===========================================
+
+model FumbleCampaign {
+  id          String   @id @default(cuid())
+  guildId     String
+  name        String
+  description String?  @db.Text
+
+  // Foundry System
+  foundrySystemId String?
+  foundrySystem   FoundrySystem? @relation(fields: [foundrySystemId], references: [id])
+
+  // Members as JSON: { discordId: { username, role, foundryUserId, joinedAt } }
+  members Json @default("{}")
+
+  // Discord role → Foundry role mappings: { discordRoleId: foundryRole }
+  roleMappings Json @default("{}")
+
+  // Container Management
+  containerId     String?
+  containerPort   Int?
+  containerStatus String   @default("stopped")
+  lastActiveAt    DateTime?
+
+  // Ownership
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  guild      Guild                  @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+  snapshots  FoundryWorldSnapshot[]
+  assets     FumbleAsset[]
+  characters FumbleCharacter[]
+  sessions   FumbleSession[]
+
+  @@unique([guildId, name])
+  @@index([guildId])
+  @@index([containerStatus])
+}
+
+// ===========================================
+// Characters (synced from Foundry snapshots)
+// ===========================================
+
+model FumbleCharacter {
+  id         String @id @default(cuid())
+  campaignId String
+
+  // Character identity
+  name       String
+  type       String // "pc", "npc", "familiar", "companion", "monster"
+  avatarUrl  String?
+
+  // Ownership: Discord ID of owner (player, GM, or "fumblebot" for bot-controlled)
+  ownerId    String
+
+  // Foundry sync
+  foundryActorId String? // Actor ID in Foundry world
+  lastSyncedAt   DateTime?
+
+  // Character data (extracted from Foundry actor)
+  // Allows FumbleBot to reference stats, abilities, etc. when Foundry is offline
+  sheetData Json @default("{}")
+
+  // Status
+  isActive  Boolean @default(true) // Currently in play
+  isRetired Boolean @default(false) // No longer in campaign
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaign FumbleCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, foundryActorId])
+  @@index([campaignId, type])
+  @@index([ownerId])
+}
+
+// ===========================================
+// World State Persistence
+// ===========================================
+
+model FoundryWorldSnapshot {
+  id         String  @id @default(cuid())
+  campaignId String
+  version    Int     @default(1)
+
+  // Metadata
+  name   String?
+  isAuto Boolean @default(true)
+
+  // Storage reference (DigitalOcean Spaces)
+  storageKey String  // "campaigns/{id}/snapshots/{version}.zip"
+  sizeBytes  BigInt?
+
+  createdAt DateTime @default(now())
+  createdBy String?  // Discord ID of who triggered save (null = auto)
+
+  campaign FumbleCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, version])
+}
+
+// ===========================================
+// Asset Storage (DigitalOcean Spaces)
+// ===========================================
+
+model FumbleAsset {
+  id         String @id @default(cuid())
+  campaignId String
+
+  name      String // Original filename
+  type      String // "audio", "image", "video", "map", "token"
+  mimeType  String
+  sizeBytes BigInt
+
+  storageKey String @unique // "campaigns/{id}/assets/{uuid}.ext"
+  metadata   Json   @default("{}") // width, height, duration, etc.
+
+  createdAt  DateTime @default(now())
+  uploadedBy String   // Discord ID
+
+  campaign FumbleCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, type])
+}
+
+// ===========================================
+// Foundry System Registry
+// ===========================================
+
+model FoundrySystem {
+  id          String   @id @default(cuid())
+  systemId    String   @unique // e.g., "dnd5e", "pf2e"
+  title       String            // Display name
+  description String?  @db.Text
+  version     String?
+  manifestUrl String   @unique
+
+  // Parsed from manifest
+  compatibility Json? // { minimum, verified, maximum }
+  authors       Json? // [{ name, url, discord }]
+
+  // FumbleBot settings (merged from FumbleGameSystem)
+  iconUrl   String?
+  isEnabled Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns FumbleCampaign[]
+}
+
+// ===========================================
+// Game Sessions & Conversation Tracking
+// ===========================================
+
+model FumbleSession {
+  id         String @id @default(cuid())
+  campaignId String
+
+  // Session info
+  name        String?  // Optional session name like "Session 12: The Dragon's Lair"
+  channelId   String   // Discord channel where session is happening
+  voiceChannelId String? // Voice channel if applicable
+
+  // Status
+  status    String   @default("active") // "active", "paused", "ended"
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  startedBy String   // Discord ID of who started the session
+
+  // Session summary (can be auto-generated or GM-written)
+  summary   String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaign FumbleCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  messages FumbleMessage[]
+
+  @@index([campaignId, status])
+  @@index([channelId])
+}
+
+model FumbleMessage {
+  id        String @id @default(cuid())
+  sessionId String
+
+  // Who said it
+  discordId   String  // Discord user ID
+  characterId String? // FumbleCharacter ID if speaking as character
+
+  // Message content
+  content     String   @db.Text
+  messageType String   @default("ic") // "ic" (in-character), "ooc" (out-of-character), "narration", "roll", "system"
+
+  // Discord message reference
+  discordMessageId String? @unique
+
+  // Timestamps
+  timestamp DateTime @default(now())
+
+  session FumbleSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, timestamp])
+  @@index([discordId])
+  @@index([characterId])
 }
 
 // ===========================================
