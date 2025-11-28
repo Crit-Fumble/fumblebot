@@ -15,6 +15,9 @@ APP_DIR="/root/fumblebot"
 LOG_FILE="/root/fumblebot/deploy.log"
 LOCK_FILE="/tmp/fumblebot-deploy.lock"
 
+# Ensure log file exists
+touch "$LOG_FILE"
+
 # Logging function
 log() {
     echo -e "$1" | tee -a "$LOG_FILE"
@@ -72,19 +75,48 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Install client dependencies (React app in src/client)
-if [ -d "src/client" ] && [ -f "src/client/package.json" ]; then
-    log "Installing client dependencies..."
-    cd src/client
+# Install activity client dependencies (React app in src/activity)
+if [ -d "src/activity" ] && [ -f "src/activity/package.json" ]; then
+    log "Installing activity client dependencies..."
+    cd src/activity
     npm ci --production=false 2>/dev/null || npm install
     if [ $? -ne 0 ]; then
-        log "${RED}Client npm install failed${NC}"
+        log "${RED}Activity client npm install failed${NC}"
         exit 1
     fi
     cd ../..
 fi
 
 log "${GREEN}Dependencies installed${NC}"
+log ""
+
+# Step 3.5: Validate required environment variables
+log "${YELLOW}Validating environment variables...${NC}"
+if [ -f ".env" ]; then
+    # Check for required variables
+    MISSING_VARS=""
+
+    if ! grep -q "^SESSION_SECRET=." .env; then
+        MISSING_VARS="${MISSING_VARS}SESSION_SECRET "
+    fi
+
+    if ! grep -q "^FUMBLEBOT_DISCORD_CLIENT_ID=." .env; then
+        MISSING_VARS="${MISSING_VARS}FUMBLEBOT_DISCORD_CLIENT_ID "
+    fi
+
+    if [ -n "$MISSING_VARS" ]; then
+        log "${RED}Missing required environment variables: ${MISSING_VARS}${NC}"
+        log "${YELLOW}Please set these in your .env file before deploying.${NC}"
+        log "${YELLOW}See .env.example for required variables.${NC}"
+        exit 1
+    fi
+
+    log "${GREEN}Environment variables validated${NC}"
+else
+    log "${RED}.env file not found${NC}"
+    log "${YELLOW}Please create a .env file from .env.example${NC}"
+    exit 1
+fi
 log ""
 
 # Step 4: Build and setup

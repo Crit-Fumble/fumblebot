@@ -4,7 +4,27 @@
  */
 
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { fetchAndParseManifest, isValidManifestUrl, SEED_MANIFESTS } from '../services/foundry/index.js';
+
+/**
+ * Input validation schemas
+ */
+const AddSystemSchema = z.object({
+  manifestUrl: z.string()
+    .url('Must be a valid URL')
+    .max(500, 'URL too long')
+    .refine(url => url.startsWith('https://'), 'URL must use HTTPS')
+    .refine(url => url.endsWith('.json'), 'URL must end with .json'),
+});
+
+const PreviewSystemSchema = z.object({
+  manifestUrl: z.string()
+    .url('Must be a valid URL')
+    .max(500, 'URL too long')
+    .refine(url => url.startsWith('https://'), 'URL must use HTTPS')
+    .refine(url => url.endsWith('.json'), 'URL must end with .json'),
+});
 
 // In-memory storage for now (will be replaced with Prisma)
 // TODO: Replace with actual database queries once Prisma migration is run
@@ -79,17 +99,20 @@ export async function handleGetSystem(req: Request, res: Response): Promise<void
  */
 export async function handleAddSystem(req: Request, res: Response): Promise<void> {
   try {
-    const { manifestUrl } = req.body;
-
-    if (!manifestUrl || typeof manifestUrl !== 'string') {
-      res.status(400).json({ error: 'manifestUrl is required' });
+    // Validate request body
+    const parseResult = AddSystemSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        error: 'Invalid request',
+        details: parseResult.error.issues.map(e => ({
+          field: e.path.join('.'),
+          message: e.message,
+        })),
+      });
       return;
     }
 
-    if (!isValidManifestUrl(manifestUrl)) {
-      res.status(400).json({ error: 'Invalid manifest URL. Must be HTTPS and end in .json' });
-      return;
-    }
+    const { manifestUrl } = parseResult.data;
 
     // Check if already registered
     const existing = Array.from(systemsStore.values()).find(
@@ -158,18 +181,20 @@ export async function handleAddSystem(req: Request, res: Response): Promise<void
  */
 export async function handlePreviewSystem(req: Request, res: Response): Promise<void> {
   try {
-    const { manifestUrl } = req.body;
-
-    if (!manifestUrl || typeof manifestUrl !== 'string') {
-      res.status(400).json({ error: 'manifestUrl is required' });
+    // Validate request body
+    const parseResult = PreviewSystemSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        error: 'Invalid request',
+        details: parseResult.error.issues.map(e => ({
+          field: e.path.join('.'),
+          message: e.message,
+        })),
+      });
       return;
     }
 
-    if (!isValidManifestUrl(manifestUrl)) {
-      res.status(400).json({ error: 'Invalid manifest URL. Must be HTTPS and end in .json' });
-      return;
-    }
-
+    const { manifestUrl } = parseResult.data;
     const manifest = await fetchAndParseManifest(manifestUrl);
 
     res.json({

@@ -16,7 +16,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { routes, printRouteTable } from './routes.js';
-import { setupAllMiddleware } from './middleware.js';
+import { setupAllMiddleware, requireAuth, requireAdmin } from './middleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,9 +117,23 @@ export class PlatformServer {
       }
     }
 
+    // Register systems routes with admin authentication for write operations
+    for (const route of routes.systems || []) {
+      const handler = this.getHandler(route.handler);
+      if (handler) {
+        // Require admin for POST, PUT, DELETE operations on systems
+        if (route.method !== 'get') {
+          this.app[route.method](route.path, requireAdmin, handler);
+        } else {
+          this.app[route.method](route.path, handler);
+        }
+      }
+    }
+
     // Register all other routes from the routes definition
     for (const [category, categoryRoutes] of Object.entries(routes)) {
-      if (category === 'chat' || category === 'commands') continue; // Already handled above
+      // Skip already handled categories
+      if (category === 'chat' || category === 'commands' || category === 'systems') continue;
       for (const route of categoryRoutes) {
         const handler = this.getHandler(route.handler);
         if (handler) {

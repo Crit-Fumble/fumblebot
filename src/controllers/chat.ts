@@ -4,19 +4,24 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { commandExecutor, type CommandContext } from '../commands/index.js';
 
 /**
- * Chat message request body
+ * Input validation schemas
  */
-interface ChatRequest {
-  message: string;
-  sessionId?: string;
-  user?: {
-    discordId: string;
-    name: string;
-  };
-}
+const ChatRequestSchema = z.object({
+  message: z.string()
+    .min(1, 'Message cannot be empty')
+    .max(2000, 'Message cannot exceed 2000 characters'),
+  sessionId: z.string().max(100).optional(),
+  user: z.object({
+    discordId: z.string().max(50),
+    name: z.string().max(100),
+  }).optional(),
+});
+
+type ChatRequest = z.infer<typeof ChatRequestSchema>;
 
 /**
  * Extended request with Discord user ID from header
@@ -62,7 +67,6 @@ export function validateBotSecret(req: Request, res: Response, next: NextFunctio
  */
 export async function handleChat(req: Request, res: Response): Promise<void> {
   const authReq = req as AuthenticatedChatRequest;
-  const { message, sessionId, user } = req.body as ChatRequest;
   const discordUserId = authReq.discordUserId;
 
   if (!discordUserId) {
@@ -70,10 +74,20 @@ export async function handleChat(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  if (!message || typeof message !== 'string') {
-    res.status(400).json({ error: 'Message is required' });
+  // Validate request body
+  const parseResult = ChatRequestSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    res.status(400).json({
+      error: 'Invalid request',
+      details: parseResult.error.issues.map(e => ({
+        field: e.path.join('.'),
+        message: e.message,
+      })),
+    });
     return;
   }
+
+  const { message, sessionId, user } = parseResult.data;
 
   try {
     // Check if this is a command (starts with /)
