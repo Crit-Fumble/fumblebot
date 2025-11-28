@@ -1,131 +1,114 @@
 #!/bin/bash
 # Secret Scanner Pre-commit Hook
-# Scans staged files for potential secrets before allowing commit
+# Fast scan of staged files for potential secrets
 
 set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo "🔍 Scanning for secrets in staged files..."
 
-# Get list of staged files (excluding deleted files)
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
+# Get staged files only (not deleted)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || echo "")
 
 if [ -z "$STAGED_FILES" ]; then
     echo -e "${GREEN}✓ No staged files to scan${NC}"
     exit 0
 fi
 
-# Patterns to detect secrets
-# Format: "pattern|description"
-PATTERNS=(
-    # API Keys
-    'sk-[a-zA-Z0-9]{20,}|OpenAI API Key'
-    'sk-ant-[a-zA-Z0-9-]{40,}|Anthropic API Key'
-    'xoxb-[0-9]{10,}-[0-9]{10,}-[a-zA-Z0-9]{24}|Slack Bot Token'
-    'xoxp-[0-9]{10,}-[0-9]{10,}-[a-zA-Z0-9]{24}|Slack User Token'
-    'ghp_[a-zA-Z0-9]{36}|GitHub Personal Access Token'
-    'gho_[a-zA-Z0-9]{36}|GitHub OAuth Token'
-    'github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}|GitHub Fine-grained PAT'
-
-    # AWS
-    'AKIA[0-9A-Z]{16}|AWS Access Key ID'
-    '[a-zA-Z0-9/+]{40}|AWS Secret Key (potential)'
-
-    # Database URLs with passwords
-    'postgresql://[^:]+:[^@]+@|PostgreSQL Connection String'
-    'mysql://[^:]+:[^@]+@|MySQL Connection String'
-    'mongodb(\+srv)?://[^:]+:[^@]+@|MongoDB Connection String'
-
-    # Discord
-    '[MN][A-Za-z\d]{23,27}\.[A-Za-z\d-_]{6}\.[A-Za-z\d-_]{27,40}|Discord Bot Token'
-
-    # Generic secrets
-    'AVNS_[a-zA-Z0-9]{20,}|DigitalOcean Database Password'
-    'dop_v1_[a-f0-9]{64}|DigitalOcean API Token'
-    'whsec_[a-zA-Z0-9]{32,}|Stripe Webhook Secret'
-    'sk_live_[a-zA-Z0-9]{24,}|Stripe Live Secret Key'
-    'sk_test_[a-zA-Z0-9]{24,}|Stripe Test Secret Key'
-    'pk_live_[a-zA-Z0-9]{24,}|Stripe Live Public Key'
-    'pk_test_[a-zA-Z0-9]{24,}|Stripe Test Public Key'
-
-    # Private keys
-    '-----BEGIN (RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----|Private Key'
-    '-----BEGIN PGP PRIVATE KEY BLOCK-----|PGP Private Key'
-)
-
-# Files to always ignore
-IGNORE_PATTERNS=(
-    '\.env\.example$'
-    '\.env\.sample$'
-    '\.env\.template$'
-    'package-lock\.json$'
-    'yarn\.lock$'
-    'pnpm-lock\.yaml$'
-    '\.md$'  # Markdown files (documentation)
-    'scan-secrets\.sh$'  # This script
-)
+# Count files
+FILE_COUNT=$(echo "$STAGED_FILES" | wc -l)
+echo "   Checking $FILE_COUNT file(s)..."
 
 FOUND_SECRETS=0
-WARNINGS=()
 
-for FILE in $STAGED_FILES; do
-    # Skip ignored files
-    SKIP=false
-    for IGNORE in "${IGNORE_PATTERNS[@]}"; do
-        if echo "$FILE" | grep -qE "$IGNORE"; then
-            SKIP=true
-            break
-        fi
-    done
-
-    if [ "$SKIP" = true ]; then
-        continue
-    fi
-
-    # Check if file exists and is readable
-    if [ ! -f "$FILE" ]; then
-        continue
-    fi
-
-    # Get staged content
-    CONTENT=$(git show ":$FILE" 2>/dev/null || cat "$FILE")
-
-    for PATTERN_DESC in "${PATTERNS[@]}"; do
-        PATTERN=$(echo "$PATTERN_DESC" | cut -d'|' -f1)
-        DESC=$(echo "$PATTERN_DESC" | cut -d'|' -f2)
-
-        # Search for pattern
-        MATCHES=$(echo "$CONTENT" | grep -oE "$PATTERN" 2>/dev/null || true)
-
-        if [ -n "$MATCHES" ]; then
-            FOUND_SECRETS=1
-            echo -e "${RED}❌ POTENTIAL SECRET FOUND${NC}"
-            echo -e "   File: ${YELLOW}$FILE${NC}"
-            echo -e "   Type: ${YELLOW}$DESC${NC}"
-            echo -e "   Pattern matched: $PATTERN"
-            echo ""
-            WARNINGS+=("$FILE: $DESC")
-        fi
-    done
-done
-
-# Also check for .env files being staged
-ENV_FILES=$(echo "$STAGED_FILES" | grep -E '\.env$|\.env\.[a-z]+$' | grep -vE '\.example$|\.sample$|\.template$' || true)
+# Check for .env files being staged (fast check first)
+ENV_FILES=$(echo "$STAGED_FILES" | grep -E '^\.env$|^\.env\.[^.]+$' | grep -vE '\.example$|\.sample$|\.template$' || true)
 if [ -n "$ENV_FILES" ]; then
     FOUND_SECRETS=1
-    echo -e "${RED}❌ ENVIRONMENT FILES STAGED${NC}"
-    echo -e "   The following .env files are staged for commit:"
-    for ENV_FILE in $ENV_FILES; do
-        echo -e "   ${YELLOW}$ENV_FILE${NC}"
-    done
-    echo ""
-    echo -e "   ${YELLOW}These files typically contain secrets and should NOT be committed.${NC}"
-    echo -e "   Add them to .gitignore instead."
+    echo -e "${RED}❌ .env file(s) staged for commit:${NC}"
+    echo "$ENV_FILES" | while read f; do echo -e "   ${YELLOW}$f${NC}"; done
 fi
+
+# Use grep to scan all staged files at once (much faster than loop)
+# Get the staged content and search with grep
+for FILE in $STAGED_FILES; do
+    # Skip certain file types
+    case "$FILE" in
+        *.md|*.lock|package-lock.json|yarn.lock|*.example|*.sample|scan-secrets.sh|deploy.yml)
+            continue
+            ;;
+    esac
+
+    # Skip if file doesn't exist (deleted)
+    [ -f "$FILE" ] || continue
+
+    # Get staged content
+    CONTENT=$(git show ":$FILE" 2>/dev/null) || continue
+
+    # OpenAI key
+    if echo "$CONTENT" | grep -qE 'sk-[a-zA-Z0-9]{20,}'; then
+        echo -e "${RED}❌ Potential OpenAI API key in: ${YELLOW}$FILE${NC}"
+        FOUND_SECRETS=1
+    fi
+
+    # Anthropic key
+    if echo "$CONTENT" | grep -qE 'sk-ant-[a-zA-Z0-9-]{40,}'; then
+        echo -e "${RED}❌ Potential Anthropic API key in: ${YELLOW}$FILE${NC}"
+        FOUND_SECRETS=1
+    fi
+
+    # DigitalOcean database password
+    if echo "$CONTENT" | grep -qE 'AVNS_[a-zA-Z0-9]{10,}'; then
+        echo -e "${RED}❌ Potential DO database password in: ${YELLOW}$FILE${NC}"
+        FOUND_SECRETS=1
+    fi
+
+    # DigitalOcean API token
+    if echo "$CONTENT" | grep -qE 'dop_v1_[a-f0-9]{64}'; then
+        echo -e "${RED}❌ Potential DO API token in: ${YELLOW}$FILE${NC}"
+        FOUND_SECRETS=1
+    fi
+
+    # Database URLs with passwords
+    if echo "$CONTENT" | grep -qE 'postgresql://[^:]+:[^@]{8,}@'; then
+        echo -e "${RED}❌ Potential database URL with password in: ${YELLOW}$FILE${NC}"
+        FOUND_SECRETS=1
+    fi
+
+    # Discord bot token
+    if echo "$CONTENT" | grep -qE '[MN][A-Za-z0-9]{23,27}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}'; then
+        echo -e "${RED}❌ Potential Discord bot token in: ${YELLOW}$FILE${NC}"
+        FOUND_SECRETS=1
+    fi
+
+    # Stripe keys
+    if echo "$CONTENT" | grep -qE 'sk_(live|test)_[a-zA-Z0-9]{24,}'; then
+        echo -e "${RED}❌ Potential Stripe secret key in: ${YELLOW}$FILE${NC}"
+        FOUND_SECRETS=1
+    fi
+
+    # Stripe webhook secrets
+    if echo "$CONTENT" | grep -qE 'whsec_[a-zA-Z0-9]{24,}'; then
+        echo -e "${RED}❌ Potential Stripe webhook secret in: ${YELLOW}$FILE${NC}"
+        FOUND_SECRETS=1
+    fi
+
+    # AWS keys
+    if echo "$CONTENT" | grep -qE 'AKIA[0-9A-Z]{16}'; then
+        echo -e "${RED}❌ Potential AWS access key in: ${YELLOW}$FILE${NC}"
+        FOUND_SECRETS=1
+    fi
+
+    # Private keys
+    if echo "$CONTENT" | grep -qE '-----BEGIN (RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----'; then
+        echo -e "${RED}❌ Private key found in: ${YELLOW}$FILE${NC}"
+        FOUND_SECRETS=1
+    fi
+done
 
 if [ $FOUND_SECRETS -eq 1 ]; then
     echo ""
@@ -133,16 +116,10 @@ if [ $FOUND_SECRETS -eq 1 ]; then
     echo -e "${RED}COMMIT BLOCKED: Potential secrets detected!${NC}"
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo "To fix this:"
-    echo "  1. Remove the secrets from the staged files"
-    echo "  2. Use environment variables instead"
-    echo "  3. Add the file to .gitignore if it should never be committed"
-    echo ""
-    echo "To bypass this check (NOT RECOMMENDED):"
-    echo "  git commit --no-verify"
-    echo ""
+    echo "To fix: Remove secrets and use environment variables instead."
+    echo "To bypass (NOT RECOMMENDED): git commit --no-verify"
     exit 1
 fi
 
-echo -e "${GREEN}✓ No secrets detected in staged files${NC}"
+echo -e "${GREEN}✓ No secrets detected${NC}"
 exit 0

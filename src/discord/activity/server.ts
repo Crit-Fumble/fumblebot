@@ -94,7 +94,18 @@ export class ActivityServer {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
-    // Main activity route
+    // OAuth2 token exchange for Discord Activity SDK
+    // This must come before the catch-all route
+    this.app.post('/api/token', (req, res) => {
+      this.handleTokenExchange(req, res);
+    });
+
+    // Main activity route - serve at root for Discord Activities
+    this.app.get('/', (req, res) => {
+      this.serveActivity(req, res);
+    });
+
+    // Also serve at /discord/activity for backwards compatibility
     this.app.get('/discord/activity', (req, res) => {
       this.serveActivity(req, res);
     });
@@ -131,11 +142,6 @@ export class ActivityServer {
     // Spell lookup activity
     this.app.get('/discord/activity/spells', (req, res) => {
       this.serveSpellLookup(req, res);
-    });
-
-    // OAuth2 token exchange for Discord Activity SDK
-    this.app.post('/discord/activity/api/token', (req, res) => {
-      this.handleTokenExchange(req, res);
     });
 
     // 404 handler
@@ -318,7 +324,7 @@ export class ActivityServer {
         // Step 4: Exchange code for access token
         log('Exchanging token...');
         setStatus('Authenticating...');
-        const tokenResponse = await fetch('/.proxy/discord/activity/api/token', {
+        const tokenResponse = await fetch('/.proxy/api/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code }),
