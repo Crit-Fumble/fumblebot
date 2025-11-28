@@ -22,7 +22,7 @@ import { FoundryClient } from '../services/foundry/client.js';
 import { getScreenshotService } from '../services/foundry/screenshot.js';
 import { AIService } from '../services/ai/service.js';
 import { readFile } from 'fs/promises';
-import type { PrismaClient } from '@prisma/client';
+import type { prisma } from '../services/db/client.js';
 
 // Configuration
 const FOUNDRY_URL = process.env.FOUNDRY_URL || 'http://localhost:30000';
@@ -37,7 +37,7 @@ class FumbleBotMCPServer {
   private foundryClient: FoundryClient;
   private aiService: AIService;
 
-  constructor(prisma?: PrismaClient) {
+  constructor(prismaClient?: typeof prisma) {
     this.server = new Server(
       {
         name: 'fumblebot',
