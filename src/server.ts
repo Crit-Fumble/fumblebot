@@ -19,6 +19,8 @@ import {
   handleTokenExchange,
   handleOAuthCallback,
   handleGetAuthUser,
+  handleLogout,
+  handleGetUserGuilds,
   handleSessionCreate,
   handleSessionGet,
   handleListSystems,
@@ -31,6 +33,7 @@ import {
 import {
   getDiscordActivityHtml,
   getWebDashboardHtml,
+  getWebActivityHtml,
   getCharacterSheetHtml,
   getDiceRollerHtml,
   getMapViewerHtml,
@@ -108,6 +111,8 @@ export class PlatformServer {
       handleTokenExchange: (req, res) => handleTokenExchange(req, res),
       handleOAuthCallback: (req, res) => handleOAuthCallback(req, res, this.config),
       handleGetAuthUser: (req, res) => handleGetAuthUser(req, res),
+      handleLogout: (req, res) => handleLogout(req, res),
+      handleGetUserGuilds: (req, res) => handleGetUserGuilds(req, res),
 
       // Platform routes
       handleRoot: (req, res) => {
@@ -123,6 +128,7 @@ export class PlatformServer {
         const ctx = detectPlatform(req);
         this.serveWebActivity(req, res, ctx);
       },
+      handleWebActivityRoute: (req, res) => this.serveWebActivityPanel(req, res),
 
       // Activities
       serveCharacterSheet: (req, res) => this.serveCharacterSheet(req, res),
@@ -161,6 +167,14 @@ export class PlatformServer {
   private serveWebActivity(req: Request, res: Response, ctx: PlatformContext): void {
     const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '';
     res.send(getWebDashboardHtml(clientId, this.config.publicUrl, ctx));
+  }
+
+  /**
+   * Serve Web Activity Panel (with session auth)
+   */
+  private serveWebActivityPanel(req: Request, res: Response): void {
+    const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '';
+    res.send(getWebActivityHtml(clientId, this.config.publicUrl));
   }
 
   /**

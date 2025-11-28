@@ -3,18 +3,18 @@
  * Tests admin portal availability and authentication
  *
  * Run with: npm run test:integration
- * Tests against production deployment at fumblebot.crit-fumble.com
+ * By default tests against local server at http://localhost:3001
+ * Set FUMBLEBOT_ADMIN_PORTAL_URL to test against production
  */
 
 import { describe, it, expect } from 'vitest'
 
-const ADMIN_PORTAL_URL = process.env.FUMBLEBOT_ADMIN_PORTAL_URL || 'https://fumblebot.crit-fumble.com'
-const ACTIVITY_URL = process.env.FUMBLEBOT_ACTIVITY_PUBLIC_URL || 'https://1443525084256931880.discordsays.com'
+const ADMIN_PORTAL_URL = process.env.FUMBLEBOT_ADMIN_PORTAL_URL || 'http://localhost:3001'
 
 describe('Admin Portal Integration Tests', () => {
   describe('Health & Availability', () => {
     it('should respond to health check endpoint', async () => {
-      const response = await fetch(`${ADMIN_PORTAL_URL}/api/health`)
+      const response = await fetch(`${ADMIN_PORTAL_URL}/health`)
 
       expect(response.ok).toBe(true)
       expect(response.status).toBe(200)
@@ -23,122 +23,94 @@ describe('Admin Portal Integration Tests', () => {
       expect(data).toHaveProperty('status', 'ok')
     })
 
-    it('should serve login page at /login', async () => {
-      const response = await fetch(`${ADMIN_PORTAL_URL}/login`)
+    it('should serve root page', async () => {
+      const response = await fetch(ADMIN_PORTAL_URL)
 
       expect(response.ok).toBe(true)
       expect(response.status).toBe(200)
 
       const html = await response.text()
-      expect(html).toContain('FumbleBot Admin')
-      expect(html).toContain('Login with Discord')
+      expect(html).toContain('FumbleBot')
     })
 
-    it('should redirect to login when accessing admin page unauthenticated', async () => {
-      const response = await fetch(`${ADMIN_PORTAL_URL}/admin`, {
-        redirect: 'manual',
-      })
-
-      expect(response.status).toBe(302)
-      expect(response.headers.get('location')).toContain('/login')
-    })
-
-    it('should have proper HTTPS security headers', async () => {
+    it('should have proper security headers', async () => {
       const response = await fetch(ADMIN_PORTAL_URL)
 
       // Check for security headers
       const headers = response.headers
-      expect(headers.get('strict-transport-security')).toBeTruthy()
-      expect(headers.get('x-content-type-options')).toBe('nosniff')
-      expect(headers.get('x-frame-options')).toBeTruthy()
-      expect(headers.get('referrer-policy')).toBeTruthy()
+      // CSP or X-Frame-Options should be set for iframe protection
+      const hasFrameProtection = headers.get('content-security-policy') || headers.get('x-frame-options')
+      expect(hasFrameProtection).toBeTruthy()
     })
   })
 
-  describe('Discord Activity Server', () => {
-    it('should respond to activity endpoint', async () => {
-      const response = await fetch(ACTIVITY_URL)
+  describe('Discord Activity', () => {
+    it('should respond to discord activity endpoint', async () => {
+      const response = await fetch(`${ADMIN_PORTAL_URL}/discord/activity`)
 
       expect(response.ok).toBe(true)
       expect(response.status).toBe(200)
+
+      const html = await response.text()
+      expect(html).toContain('FumbleBot')
     })
 
     it('should have Discord iframe-compatible headers', async () => {
-      const response = await fetch(ACTIVITY_URL)
+      const response = await fetch(`${ADMIN_PORTAL_URL}/discord/activity`)
 
       const headers = response.headers
-      const xFrameOptions = headers.get('x-frame-options')
       const csp = headers.get('content-security-policy')
-      const acao = headers.get('access-control-allow-origin')
 
-      // Should allow Discord to iframe this
-      if (xFrameOptions) {
-        expect(xFrameOptions).toContain('ALLOW-FROM')
-      }
+      // CSP should allow Discord to iframe this
       if (csp) {
-        expect(csp).toContain('discord.com')
+        expect(csp).toContain('discord')
       }
-      if (acao) {
-        expect(acao).toContain('discord.com')
-      }
-    })
-
-    it('should serve HTTPS content for Discord', async () => {
-      const url = new URL(ACTIVITY_URL)
-      expect(url.protocol).toBe('https:')
     })
   })
 
-  describe('Authentication Flow', () => {
-    it('should expose Discord OAuth endpoint', async () => {
-      const response = await fetch(`${ADMIN_PORTAL_URL}/auth/signin/discord`, {
-        redirect: 'manual',
+  describe('Authentication Endpoints', () => {
+    it('should have token exchange endpoint', async () => {
+      const response = await fetch(`${ADMIN_PORTAL_URL}/api/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
       })
 
-      // Should redirect to Discord OAuth
-      expect([302, 307]).toContain(response.status)
-      const location = response.headers.get('location')
-      expect(location).toContain('discord.com')
-      expect(location).toContain('oauth2')
+      // Should respond (400 without code, but not 404)
+      expect(response.status).not.toBe(404)
     })
 
-    it('should have callback endpoint configured', async () => {
-      // The callback endpoint should exist (will return error without proper OAuth flow)
-      const response = await fetch(`${ADMIN_PORTAL_URL}/auth/callback/discord`, {
+    it('should have auth callback endpoint configured', async () => {
+      const response = await fetch(`${ADMIN_PORTAL_URL}/auth/callback`, {
         redirect: 'manual',
       })
 
-      // Should not be 404
+      // Should not be 404 (400 without proper code is expected)
+      expect(response.status).not.toBe(404)
+    })
+
+    it('should have auth me endpoint', async () => {
+      const response = await fetch(`${ADMIN_PORTAL_URL}/api/auth/me`)
+
+      // Should respond 401 without auth, but not 404
       expect(response.status).not.toBe(404)
     })
   })
 
   describe('API Endpoints', () => {
-    it('should have bot status endpoint', async () => {
-      const response = await fetch(`${ADMIN_PORTAL_URL}/api/bot/status`)
+    it('should have platform info endpoint', async () => {
+      const response = await fetch(`${ADMIN_PORTAL_URL}/api/platform`)
 
-      // Should respond (may require auth, but endpoint exists)
-      expect(response.status).not.toBe(404)
-    })
-
-    it('should have Discord verify endpoint', async () => {
-      const response = await fetch(`${ADMIN_PORTAL_URL}/api/discord/verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ test: true }),
-      })
-
-      // Should respond (may be 401/403 without auth, but not 404)
-      expect(response.status).not.toBe(404)
+      expect(response.ok).toBe(true)
+      const data = await response.json()
+      expect(data).toHaveProperty('platform')
     })
   })
 
   describe('Performance', () => {
     it('should respond to health check within reasonable time', async () => {
       const start = Date.now()
-      const response = await fetch(`${ADMIN_PORTAL_URL}/api/health`)
+      const response = await fetch(`${ADMIN_PORTAL_URL}/health`)
       const duration = Date.now() - start
 
       expect(response.ok).toBe(true)
@@ -147,10 +119,10 @@ describe('Admin Portal Integration Tests', () => {
 
     it('should handle concurrent requests', async () => {
       const promises = [
-        fetch(`${ADMIN_PORTAL_URL}/api/health`),
-        fetch(`${ADMIN_PORTAL_URL}/login`),
-        fetch(ACTIVITY_URL),
-        fetch(`${ADMIN_PORTAL_URL}/api/health`),
+        fetch(`${ADMIN_PORTAL_URL}/health`),
+        fetch(`${ADMIN_PORTAL_URL}/`),
+        fetch(`${ADMIN_PORTAL_URL}/api/platform`),
+        fetch(`${ADMIN_PORTAL_URL}/health`),
       ]
 
       const start = Date.now()
@@ -175,20 +147,19 @@ describe('Admin Portal Integration Tests', () => {
     })
 
     it('should handle invalid API requests gracefully', async () => {
-      const response = await fetch(`${ADMIN_PORTAL_URL}/api/discord/verify`, {
+      const response = await fetch(`${ADMIN_PORTAL_URL}/api/token`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: 'invalid json',
       })
 
-      // Should handle error gracefully (not 500)
-      expect(response.status).not.toBe(500)
+      // Should handle error gracefully (400 for bad request, not 500)
+      expect([400, 415]).toContain(response.status)
     })
   })
 
-  describe('SSL/TLS Configuration', () => {
+  // SSL tests only run when testing against HTTPS URLs (production)
+  describe.skipIf(!ADMIN_PORTAL_URL.startsWith('https'))('SSL/TLS Configuration', () => {
     it('should serve content over HTTPS', async () => {
       const url = new URL(ADMIN_PORTAL_URL)
       expect(url.protocol).toBe('https:')

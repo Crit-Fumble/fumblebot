@@ -67,6 +67,18 @@ export const routes: Record<string, RouteDefinition[]> = {
       handler: 'handleGetAuthUser',
       description: 'Get current authenticated user',
     },
+    {
+      method: 'post',
+      path: '/api/auth/logout',
+      handler: 'handleLogout',
+      description: 'Logout and destroy session',
+    },
+    {
+      method: 'get',
+      path: '/api/auth/guilds',
+      handler: 'handleGetUserGuilds',
+      description: 'Get user Discord guilds',
+    },
   ],
 
   // Platform-specific landing pages
@@ -88,6 +100,12 @@ export const routes: Record<string, RouteDefinition[]> = {
       path: '/web',
       handler: 'handleWebRoute',
       description: 'Force Web Dashboard UI',
+    },
+    {
+      method: 'get',
+      path: '/web/activity',
+      handler: 'handleWebActivityRoute',
+      description: 'Web-based Activity UI (session auth)',
     },
     {
       method: 'get',

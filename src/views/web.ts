@@ -25,7 +25,7 @@ export function getWebDashboardHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <title>FumbleBot - Admin Dashboard</title>
+  <title>FumbleBot Activity</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -197,7 +197,7 @@ export function getWebDashboardHtml(
   <div class="container">
     <div class="hero">
       <span class="platform-badge">Platform: ${platformName}</span>
-      <h1>FumbleBot Admin Dashboard</h1>
+      <h1>FumbleBot Activity</h1>
       <p>Manage your Discord gaming sessions, Foundry VTT instances, and AI-powered tools</p>
     </div>
 

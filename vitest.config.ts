@@ -14,6 +14,7 @@ export default defineConfig({
       'node_modules/**',
       'dist/**',
       'WIP/**',
+      'tests/e2e/**', // Playwright tests - run with npm run test:e2e
     ],
     coverage: {
       provider: 'v8',
@@ -28,7 +29,7 @@ export default defineConfig({
         'scripts/**',
       ],
     },
-    setupFiles: ['./src/test/setup.ts'],
+    setupFiles: ['./tests/setup.ts'],
   },
   resolve: {
     alias: {

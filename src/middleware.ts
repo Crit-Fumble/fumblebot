@@ -1,9 +1,26 @@
 /**
  * Platform Middleware
- * Express middleware for CORS, security headers, and request processing
+ * Express middleware for CORS, security headers, session management, and request processing
  */
 
 import express, { type Application, type Request, type Response, type NextFunction } from 'express';
+import session from 'express-session';
+import cookieParser from 'cookie-parser';
+
+// Extend Express session with our user data
+declare module 'express-session' {
+  interface SessionData {
+    user?: {
+      id: string;
+      discordId: string;
+      username: string;
+      avatar: string | null;
+      globalName: string | null;
+    };
+    accessToken?: string;
+    expiresAt?: number;
+  }
+}
 
 /**
  * Get allowed origins for CORS
@@ -82,10 +99,58 @@ export function setupSecurityHeaders(app: Application): void {
 }
 
 /**
+ * Setup session middleware with Prisma-backed store
+ */
+export function setupSession(app: Application): void {
+  const sessionSecret = process.env.SESSION_SECRET || 'fumblebot-session-secret-change-in-production';
+
+  app.use(cookieParser());
+
+  app.use(session({
+    name: 'fumblebot.sid',
+    secret: sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      sameSite: 'lax',
+    },
+    // Using default memory store for now
+    // TODO: Implement Prisma session store for production
+    // store: new PrismaSessionStore(getPrisma()),
+  }));
+}
+
+/**
+ * Get session user from request
+ */
+export function getSessionUser(req: Request): { id: string; discordId: string; username: string; avatar: string | null; globalName: string | null } | null {
+  if (req.session?.user && req.session?.expiresAt && req.session.expiresAt > Date.now()) {
+    return req.session.user;
+  }
+  return null;
+}
+
+/**
+ * Middleware to require authentication
+ */
+export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  const user = getSessionUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+  next();
+}
+
+/**
  * Setup all middleware
  */
 export function setupAllMiddleware(app: Application): void {
   setupBodyParser(app);
+  setupSession(app);
   setupCors(app);
   setupSecurityHeaders(app);
 }

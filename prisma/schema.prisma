@@ -353,3 +353,64 @@ model BotCommand {
   @@index([command])
   @@index([guildId, executedAt])
 }
+
+// ===========================================
+// Auth.js / Web Sessions
+// ===========================================
+
+model AuthUser {
+  id            String    @id @default(cuid())
+  discordId     String    @unique
+  username      String
+  discriminator String?
+  avatar        String?
+  email         String?   @unique
+  globalName    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions AuthSession[]
+  accounts AuthAccount[]
+}
+
+model AuthSession {
+  id           String   @id @default(cuid())
+  userId       String
+  accessToken  String   @db.Text
+  refreshToken String?  @db.Text
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AuthAccount {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String  // "oauth"
+  provider          String  // "discord"
+  providerAccountId String  // Discord user ID
+  access_token      String? @db.Text
+  refresh_token     String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// Express session store table
+model ExpressSession {
+  sid       String   @id
+  sess      Json
+  expire    DateTime
+
+  @@index([expire])
+}

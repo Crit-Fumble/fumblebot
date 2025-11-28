@@ -7,6 +7,8 @@ export {
   handleTokenExchange,
   handleOAuthCallback,
   handleGetAuthUser,
+  handleLogout,
+  handleGetUserGuilds,
 } from './auth.js';
 
 export {

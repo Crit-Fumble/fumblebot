@@ -5,6 +5,8 @@
 
 import type { Request, Response } from 'express';
 import type { PlatformServerConfig } from '../models/types.js';
+import { prisma } from '../services/db/client.js';
+import { getSessionUser } from '../middleware.js';
 
 /**
  * Handle OAuth2 token exchange for Discord Activity SDK
@@ -47,14 +49,17 @@ export async function handleTokenExchange(req: Request, res: Response): Promise<
 
 /**
  * Handle OAuth2 callback for web-based authentication
- * Receives code from Discord redirect, exchanges for token, stores in session
+ * Receives code from Discord redirect, exchanges for token, stores in server-side session
  */
 export async function handleOAuthCallback(
   req: Request,
   res: Response,
   config: PlatformServerConfig
 ): Promise<void> {
-  const { code, error: oauthError } = req.query;
+  const { code, error: oauthError, state } = req.query;
+
+  // Parse return URL from state parameter
+  const returnUrl = typeof state === 'string' ? state : '/web/activity';
 
   if (oauthError) {
     res.status(400).send(`
@@ -109,37 +114,50 @@ export async function handleOAuthCallback(
       return;
     }
 
-    const user = await userResponse.json();
+    const discordUser = await userResponse.json();
 
-    // Success page that stores auth in localStorage and redirects
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Authentication Successful</title>
-        <style>
-          body { background:#2b2d31; color:#fff; font-family:sans-serif; display:flex; align-items:center; justify-content:center; height:100vh; }
-          .container { text-align:center; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>Welcome, ${user.username}!</h1>
-          <p>Redirecting...</p>
-        </div>
-        <script>
-          // Store auth in localStorage (temporary solution)
-          localStorage.setItem('fumblebot_auth', JSON.stringify({
-            user: ${JSON.stringify({ id: user.id, username: user.username, avatar: user.avatar })},
-            access_token: '${tokenData.access_token}',
-            expires_at: Date.now() + (${tokenData.expires_in} * 1000)
-          }));
-          // Redirect to main page
-          window.location.href = '/';
-        </script>
-      </body>
-      </html>
-    `);
+    // Create or update AuthUser in database
+    const authUser = await prisma.authUser.upsert({
+      where: { discordId: discordUser.id },
+      update: {
+        username: discordUser.username,
+        discriminator: discordUser.discriminator || null,
+        avatar: discordUser.avatar,
+        globalName: discordUser.global_name || null,
+        email: discordUser.email || null,
+      },
+      create: {
+        discordId: discordUser.id,
+        username: discordUser.username,
+        discriminator: discordUser.discriminator || null,
+        avatar: discordUser.avatar,
+        globalName: discordUser.global_name || null,
+        email: discordUser.email || null,
+      },
+    });
+
+    // Store user in server-side session
+    req.session.user = {
+      id: authUser.id,
+      discordId: authUser.discordId,
+      username: authUser.username,
+      avatar: authUser.avatar,
+      globalName: authUser.globalName,
+    };
+    req.session.accessToken = tokenData.access_token;
+    req.session.expiresAt = Date.now() + (tokenData.expires_in * 1000);
+
+    // Save session and redirect
+    req.session.save((err) => {
+      if (err) {
+        console.error('[Platform] Session save error:', err);
+        res.status(500).send('Session error');
+        return;
+      }
+
+      // Redirect to the return URL (default: /web/activity)
+      res.redirect(returnUrl);
+    });
   } catch (error) {
     console.error('[Platform] Web OAuth callback error:', error);
     res.status(500).send('Internal server error');
@@ -147,12 +165,75 @@ export async function handleOAuthCallback(
 }
 
 /**
- * Get current authenticated user from session/localStorage
- * For now, returns placeholder - full impl requires session middleware
+ * Get current authenticated user from server-side session
  */
 export function handleGetAuthUser(req: Request, res: Response): void {
-  // TODO: Implement proper session-based auth
-  // For now, this endpoint exists for the frontend to check
-  // The actual auth state is managed client-side in localStorage (temporary)
-  res.status(401).json({ error: 'Not authenticated' });
+  const user = getSessionUser(req);
+
+  if (!user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  res.json({
+    user: {
+      id: user.id,
+      discordId: user.discordId,
+      username: user.username,
+      avatar: user.avatar,
+      globalName: user.globalName,
+    },
+  });
+}
+
+/**
+ * Handle logout - destroy server-side session
+ */
+export function handleLogout(req: Request, res: Response): void {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('[Platform] Session destroy error:', err);
+      res.status(500).json({ error: 'Logout failed' });
+      return;
+    }
+    res.clearCookie('fumblebot.sid');
+    res.json({ success: true });
+  });
+}
+
+/**
+ * Get user's Discord guilds using server-side stored token
+ */
+export async function handleGetUserGuilds(req: Request, res: Response): Promise<void> {
+  const user = getSessionUser(req);
+
+  if (!user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  const accessToken = req.session.accessToken;
+  if (!accessToken) {
+    res.status(401).json({ error: 'No access token' });
+    return;
+  }
+
+  try {
+    const response = await fetch('https://discord.com/api/users/@me/guilds', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Platform] Discord guilds fetch failed:', errorText);
+      res.status(400).json({ error: 'Failed to fetch guilds' });
+      return;
+    }
+
+    const guilds = await response.json();
+    res.json({ guilds });
+  } catch (error) {
+    console.error('[Platform] Get guilds error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 }
