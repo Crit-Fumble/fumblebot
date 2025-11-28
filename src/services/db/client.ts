@@ -4,16 +4,21 @@
  */
 
 // Import from the generated client location
-// Using createRequire based on process.cwd() to always resolve from project root
+// Using import.meta.url to properly resolve relative to this module
 // This works from both src (dev with tsx) and dist (production) directories
 import { createRequire } from 'module'
-import { pathToFileURL } from 'url'
-import { join } from 'path'
+import { fileURLToPath } from 'url'
+import { dirname, join, resolve } from 'path'
 import { PrismaPg } from '@prisma/adapter-pg'
 
-// Create require function from project root (where node_modules lives)
-const projectRoot = pathToFileURL(join(process.cwd(), 'package.json')).href
-const requireFromRoot = createRequire(projectRoot)
+// Get the directory of the current module
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
+// Navigate up to project root (from src/services/db or dist/services/db)
+// This goes up 3 levels: db -> services -> src/dist -> project root
+const projectRoot = resolve(__dirname, '..', '..', '..')
+const requireFromRoot = createRequire(join(projectRoot, 'package.json'))
 
 // Dynamically require the Prisma client from node_modules/.prisma/fumblebot
 const prismaModule = requireFromRoot('.prisma/fumblebot')
