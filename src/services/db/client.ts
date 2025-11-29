@@ -123,53 +123,8 @@ export class DatabaseService {
   }
 
   // ===========================================
-  // Scripted Content Operations
+  // Rule Cache (local ephemeral cache)
   // ===========================================
-
-  async getBehavior(creatureType: string) {
-    return prisma.scriptedBehavior.findUnique({
-      where: { creatureType: creatureType.toLowerCase() },
-    })
-  }
-
-  async saveBehavior(creatureType: string, conditions: unknown) {
-    return prisma.scriptedBehavior.upsert({
-      where: { creatureType: creatureType.toLowerCase() },
-      update: { conditions: conditions as any, generatedAt: new Date() },
-      create: {
-        creatureType: creatureType.toLowerCase(),
-        conditions: conditions as any,
-      },
-    })
-  }
-
-  async getDialogue(npcId: string) {
-    return prisma.dialogueTree.findUnique({
-      where: { npcId },
-    })
-  }
-
-  async saveDialogue(npcId: string, npcName: string, nodes: unknown, startNodeId: string) {
-    return prisma.dialogueTree.upsert({
-      where: { npcId },
-      update: { npcName, nodes: nodes as any, startNodeId, generatedAt: new Date() },
-      create: { npcId, npcName, nodes: nodes as any, startNodeId },
-    })
-  }
-
-  async getTable(tableId: string) {
-    return prisma.randomTable.findUnique({
-      where: { tableId },
-    })
-  }
-
-  async saveTable(tableId: string, name: string, entries: unknown) {
-    return prisma.randomTable.upsert({
-      where: { tableId },
-      update: { name, entries: entries as any, generatedAt: new Date() },
-      create: { tableId, name, entries: entries as any },
-    })
-  }
 
   async getCachedRule(system: string, query: string) {
     const rule = await prisma.cachedRule.findUnique({

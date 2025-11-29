@@ -1,25 +1,17 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
-    "types": ["node"],
     "outDir": "./dist",
     "rootDir": "./src",
-    "strict": false,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      ".prisma/fumblebot": ["./node_modules/.prisma/fumblebot"]
+      "@crit-fumble/fumblebot-db": ["./packages/fumblebot-db/dist/index.d.ts"],
+      "@crit-fumble/fumblebot-proxy": ["./packages/fumblebot-proxy/dist/index.d.ts"],
+      "@crit-fumble/fumblebot-auth": ["./packages/fumblebot-auth/dist/index.d.ts"],
+      "@crit-fumble/fumblebot-api": ["./packages/fumblebot-api/dist/index.d.ts"],
+      ".prisma/fumblebot": ["./packages/fumblebot-db/node_modules/.prisma/fumblebot"]
     }
   },
-  "include": ["src/**/*", "WIP/rmmz"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "src/WIP/**/*", "src/activity/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "packages", "**/*.test.ts", "**/*.spec.ts", "src/WIP/**/*", "src/activity/**/*"]
 }

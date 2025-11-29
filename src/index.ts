@@ -36,6 +36,3 @@ export {
 
 // Controllers
 export * from './controllers/index.js';
-
-// Views
-export * from './views/index.js';

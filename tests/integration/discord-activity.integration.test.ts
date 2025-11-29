@@ -2,40 +2,22 @@
  * Discord Activity Integration Tests
  * Tests Discord Activity endpoints, CSP headers, and SDK requirements
  *
+ * Note: All UI content is served from core via proxy.
+ * This tests fumblebot's API endpoints and Discord-specific middleware.
+ *
  * Run with: npm run test:integration
- * By default tests against local server at http://localhost:3000
+ * By default tests against local server at http://localhost:6000
  * Set FUMBLEBOT_PLATFORM_URL to test against production
  */
 
 import { describe, it, expect } from 'vitest'
 
-const PLATFORM_URL = process.env.FUMBLEBOT_PLATFORM_URL || 'http://localhost:3000'
+// Use port 6000 for local dev (set in tests/setup.ts)
+const PLATFORM_URL = process.env.FUMBLEBOT_PLATFORM_URL || 'http://localhost:6000'
 const DISCORD_CLIENT_ID = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '1443525084256931880'
 
 describe('Discord Activity Integration Tests', () => {
-  describe('Activity Endpoint Availability', () => {
-    it('should serve Discord Activity HTML at /discord/activity', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
-
-      expect(response.ok).toBe(true)
-      expect(response.status).toBe(200)
-
-      const html = await response.text()
-      expect(html).toContain('<!DOCTYPE html>')
-      expect(html).toContain('FumbleBot')
-      expect(html).toContain('Discord')
-    })
-
-    it('should serve Discord Activity HTML at root /', async () => {
-      const response = await fetch(`${PLATFORM_URL}/`)
-
-      expect(response.ok).toBe(true)
-      expect(response.status).toBe(200)
-
-      const html = await response.text()
-      expect(html).toContain('FumbleBot')
-    })
-
+  describe('Health & Core API', () => {
     it('should respond to health check', async () => {
       const response = await fetch(`${PLATFORM_URL}/health`)
 
@@ -43,11 +25,17 @@ describe('Discord Activity Integration Tests', () => {
       const data = await response.json()
       expect(data.status).toBe('ok')
     })
+
+    it('should return 404 for unknown routes', async () => {
+      const response = await fetch(`${PLATFORM_URL}/unknown-route-xyz123`)
+
+      expect(response.status).toBe(404)
+    })
   })
 
   describe('Content-Security-Policy Headers', () => {
     it('should have CSP header with frame-ancestors for Discord', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
+      const response = await fetch(`${PLATFORM_URL}/health`)
       const csp = response.headers.get('content-security-policy')
 
       expect(csp).toBeTruthy()
@@ -56,25 +44,17 @@ describe('Discord Activity Integration Tests', () => {
       expect(csp).toContain('discordsays.com')
     })
 
-    it('should allow scripts from esm.sh (Discord SDK host)', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
+    it('should have script-src directive', async () => {
+      const response = await fetch(`${PLATFORM_URL}/health`)
       const csp = response.headers.get('content-security-policy')
 
       expect(csp).toBeTruthy()
       expect(csp).toContain('script-src')
-      expect(csp).toContain('esm.sh')
-    })
-
-    it('should allow inline scripts (unsafe-inline)', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
-      const csp = response.headers.get('content-security-policy')
-
-      expect(csp).toBeTruthy()
-      expect(csp).toContain("'unsafe-inline'")
+      expect(csp).toContain("'self'")
     })
 
     it('should allow connections to Discord API', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
+      const response = await fetch(`${PLATFORM_URL}/health`)
       const csp = response.headers.get('content-security-policy')
 
       expect(csp).toBeTruthy()
@@ -83,7 +63,7 @@ describe('Discord Activity Integration Tests', () => {
     })
 
     it('should allow images from Discord CDN', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
+      const response = await fetch(`${PLATFORM_URL}/health`)
       const csp = response.headers.get('content-security-policy')
 
       expect(csp).toBeTruthy()
@@ -92,39 +72,12 @@ describe('Discord Activity Integration Tests', () => {
     })
 
     it('should include client ID in frame-ancestors', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
+      const response = await fetch(`${PLATFORM_URL}/health`)
       const csp = response.headers.get('content-security-policy')
 
       expect(csp).toBeTruthy()
       // Should include {client_id}.discordsays.com
       expect(csp).toContain(`${DISCORD_CLIENT_ID}.discordsays.com`)
-    })
-  })
-
-  describe('Discord SDK Integration', () => {
-    it('should include Discord SDK import in HTML', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
-      const html = await response.text()
-
-      // Should import Discord SDK from esm.sh
-      expect(html).toContain('esm.sh/@discord/embedded-app-sdk')
-    })
-
-    it('should include client ID in JavaScript', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
-      const html = await response.text()
-
-      // Client ID should be injected into the JavaScript
-      expect(html).toContain(DISCORD_CLIENT_ID)
-    })
-
-    it('should have SDK initialization code', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
-      const html = await response.text()
-
-      // Should have Discord SDK initialization
-      expect(html).toContain('DiscordSDK')
-      expect(html).toContain('discordSdk.ready()')
     })
   })
 
@@ -157,7 +110,7 @@ describe('Discord Activity Integration Tests', () => {
 
   describe('CORS Configuration', () => {
     it('should allow Discord origin', async () => {
-      const response = await fetch(`${PLATFORM_URL}/api/platform`, {
+      const response = await fetch(`${PLATFORM_URL}/health`, {
         headers: {
           'Origin': 'https://discord.com',
         },
@@ -168,7 +121,7 @@ describe('Discord Activity Integration Tests', () => {
     })
 
     it('should allow discordsays.com origin', async () => {
-      const response = await fetch(`${PLATFORM_URL}/api/platform`, {
+      const response = await fetch(`${PLATFORM_URL}/health`, {
         headers: {
           'Origin': `https://${DISCORD_CLIENT_ID}.discordsays.com`,
         },
@@ -179,7 +132,7 @@ describe('Discord Activity Integration Tests', () => {
     })
 
     it('should allow credentials', async () => {
-      const response = await fetch(`${PLATFORM_URL}/api/platform`, {
+      const response = await fetch(`${PLATFORM_URL}/health`, {
         headers: {
           'Origin': 'https://discord.com',
         },
@@ -202,43 +155,7 @@ describe('Discord Activity Integration Tests', () => {
     })
   })
 
-  describe('Activity UI Elements', () => {
-    it('should include status display element', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
-      const html = await response.text()
-
-      expect(html).toContain('id="status"')
-    })
-
-    it('should include admin dashboard section', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
-      const html = await response.text()
-
-      expect(html).toContain('id="admin-dashboard"')
-    })
-
-    it('should include waiting container for non-admins', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
-      const html = await response.text()
-
-      expect(html).toContain('id="waiting-container"')
-    })
-
-    it('should include debug panel (hidden by default)', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
-      const html = await response.text()
-
-      expect(html).toContain('id="debug"')
-    })
-  })
-
   describe('Error Handling', () => {
-    it('should return 404 for unknown routes', async () => {
-      const response = await fetch(`${PLATFORM_URL}/unknown-route-xyz123`)
-
-      expect(response.status).toBe(404)
-    })
-
     it('should handle malformed JSON gracefully', async () => {
       const response = await fetch(`${PLATFORM_URL}/api/token`, {
         method: 'POST',
@@ -252,18 +169,18 @@ describe('Discord Activity Integration Tests', () => {
   })
 
   describe('Performance', () => {
-    it('should serve Activity HTML within 2 seconds', async () => {
+    it('should respond to health check within 2 seconds', async () => {
       const start = Date.now()
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
+      const response = await fetch(`${PLATFORM_URL}/health`)
       const duration = Date.now() - start
 
       expect(response.ok).toBe(true)
       expect(duration).toBeLessThan(2000)
     })
 
-    it('should handle concurrent Activity requests', async () => {
+    it('should handle concurrent requests', async () => {
       const promises = Array(5).fill(null).map(() =>
-        fetch(`${PLATFORM_URL}/discord/activity`)
+        fetch(`${PLATFORM_URL}/health`)
       )
 
       const start = Date.now()
@@ -278,15 +195,38 @@ describe('Discord Activity Integration Tests', () => {
     })
   })
 
+  describe('Authentication Endpoints', () => {
+    it('should have auth me endpoint', async () => {
+      const response = await fetch(`${PLATFORM_URL}/api/auth/me`)
+
+      // Should respond (200 or 401 without auth, but not 404)
+      expect(response.status).not.toBe(404)
+    })
+
+    it('should have auth guilds endpoint', async () => {
+      const response = await fetch(`${PLATFORM_URL}/api/auth/guilds`)
+
+      // Should respond (200 or 401 without auth, but not 404)
+      expect(response.status).not.toBe(404)
+    })
+
+    it('should have auth activities endpoint', async () => {
+      const response = await fetch(`${PLATFORM_URL}/api/auth/activities`)
+
+      // Should respond (200 or 401 without auth, but not 404)
+      expect(response.status).not.toBe(404)
+    })
+  })
+
   // Production-only SSL tests
   describe.skipIf(!PLATFORM_URL.startsWith('https'))('Production SSL', () => {
-    it('should serve Activity over HTTPS', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
+    it('should serve content over HTTPS', async () => {
+      const response = await fetch(`${PLATFORM_URL}/health`)
       expect(response.ok).toBe(true)
     })
 
     it('should have HSTS header', async () => {
-      const response = await fetch(`${PLATFORM_URL}/discord/activity`)
+      const response = await fetch(`${PLATFORM_URL}/health`)
       const hsts = response.headers.get('strict-transport-security')
 
       // HSTS should be set in production

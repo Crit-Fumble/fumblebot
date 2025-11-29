@@ -1,3 +1,5 @@
+*.crt
+
 # Dependencies
 node_modules/
 .pnp

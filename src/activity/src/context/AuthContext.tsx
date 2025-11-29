@@ -1,3 +1,16 @@
+/**
+ * FumbleBot Activity Auth Context
+ *
+ * TODO: When @crit-fumble/core-activity is published, replace this local
+ * implementation with imports from core:
+ *
+ *   export { AuthProvider, useAuth, useApiUrl } from '@crit-fumble/core-activity'
+ *   export type { Platform, AuthState, Guild, UserActivity } from '@crit-fumble/core-activity'
+ *
+ * For now, this is a fumblebot-specific stub that will be replaced when
+ * the shared activity handling is implemented in core.
+ */
+
 import {
   createContext,
   useContext,
@@ -7,7 +20,11 @@ import {
   type ReactNode,
 } from 'react';
 import { DiscordSDK } from '@discord/embedded-app-sdk';
-import type { DiscordUser, DiscordContext } from '@/types';
+import type { DiscordUser, DiscordContext, Guild, UserActivity } from '@/types';
+import { ADMINISTRATOR } from '@/types';
+
+// Re-export types for consumers
+export type { Guild, UserActivity };
 
 // Platform detection
 export type Platform = 'discord' | 'web';
@@ -24,36 +41,6 @@ export interface AuthState {
   activities: UserActivity[] | null; // Active sessions user can join
 }
 
-export interface Guild {
-  id: string;
-  name: string;
-  icon: string | null;
-  owner: boolean;
-  permissions: string;
-}
-
-export interface UserActivity {
-  guildId: string;
-  guildName: string | null;
-  campaigns: Array<{
-    id: string;
-    name: string;
-    hasActiveSession: boolean;
-    activeSession: {
-      id: string;
-      name: string | null;
-      channelId: string;
-      startedAt: string;
-    } | null;
-    characters: Array<{
-      id: string;
-      name: string;
-      type: string;
-      avatarUrl: string | null;
-    }>;
-  }>;
-}
-
 interface AuthContextValue extends AuthState {
   initialize: () => Promise<void>;
   login: () => void;
@@ -67,8 +54,6 @@ interface AuthProviderProps {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-const ADMIN_PERMISSION = 0x8n;
 
 /**
  * Detect if we're running inside Discord iframe
@@ -161,7 +146,7 @@ export function AuthProvider({ children, clientId }: AuthProviderProps) {
       // Check permissions
       const { permissions } = await sdk.commands.getChannelPermissions();
       const permBigInt = BigInt(permissions);
-      const isAdmin = (permBigInt & ADMIN_PERMISSION) === ADMIN_PERMISSION;
+      const isAdmin = (permBigInt & ADMINISTRATOR) === ADMINISTRATOR;
 
       setState(prev => ({
         ...prev,
@@ -233,7 +218,7 @@ export function AuthProvider({ children, clientId }: AuthProviderProps) {
           const selectedGuild = guilds.find(g => g.id === selectedGuildId);
           if (selectedGuild) {
             const permissions = BigInt(selectedGuild.permissions);
-            isAdminInSelectedGuild = (permissions & ADMIN_PERMISSION) === ADMIN_PERMISSION || selectedGuild.owner;
+            isAdminInSelectedGuild = (permissions & ADMINISTRATOR) === ADMINISTRATOR || selectedGuild.owner;
           }
         }
       }
@@ -326,7 +311,7 @@ export function AuthProvider({ children, clientId }: AuthProviderProps) {
     let isAdminInGuild = false;
     if (selectedGuild) {
       const permissions = BigInt(selectedGuild.permissions);
-      isAdminInGuild = (permissions & ADMIN_PERMISSION) === ADMIN_PERMISSION || selectedGuild.owner;
+      isAdminInGuild = (permissions & ADMINISTRATOR) === ADMINISTRATOR || selectedGuild.owner;
     }
 
     setState(prev => ({

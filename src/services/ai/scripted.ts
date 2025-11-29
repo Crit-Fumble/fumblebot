@@ -9,6 +9,10 @@
  * - Random encounter tables
  * - Cached rule lookups
  * - Pre-built response templates
+ *
+ * NOTE: Behaviors, dialogues, and tables are now stored in core.
+ * This service uses in-memory caching with core API for persistence.
+ * TODO: Integrate with core API for CRUD operations.
  */
 
 import { AIService } from './service.js'
@@ -104,6 +108,7 @@ export class ScriptedContent {
 
   /**
    * Get or generate behavior script for a creature type
+   * TODO: Integrate with core API for persistence
    */
   async getBehavior(creatureType: string, forceRegenerate = false): Promise<ScriptedBehavior> {
     const key = creatureType.toLowerCase()
@@ -113,26 +118,14 @@ export class ScriptedContent {
       return this.behaviorCache.get(key)!
     }
 
-    // Check database
-    if (!forceRegenerate) {
-      const dbBehavior = await db.getBehavior(key)
-      if (dbBehavior) {
-        const behavior: ScriptedBehavior = {
-          id: dbBehavior.id,
-          creatureType: dbBehavior.creatureType,
-          conditions: dbBehavior.conditions as unknown as BehaviorCondition[],
-          generatedAt: dbBehavior.generatedAt,
-        }
-        this.behaviorCache.set(key, behavior)
-        return behavior
-      }
-    }
+    // TODO: Check core API for persisted behavior
+    // const coreBehavior = await coreApi.behaviors.get(key)
 
     // Generate new behavior
     const behavior = await this.generateBehavior(creatureType)
 
-    // Save to database
-    await db.saveBehavior(key, behavior.conditions)
+    // TODO: Save to core API
+    // await coreApi.behaviors.save(key, behavior.conditions)
 
     // Cache in memory
     this.behaviorCache.set(key, behavior)
@@ -230,6 +223,7 @@ Example format:
 
   /**
    * Get or generate dialogue tree for an NPC
+   * TODO: Integrate with core API for persistence
    */
   async getDialogue(npcId: string, npcDescription?: string): Promise<DialogueTree> {
     // Check in-memory cache
@@ -237,19 +231,8 @@ Example format:
       return this.dialogueCache.get(npcId)!
     }
 
-    // Check database
-    const dbDialogue = await db.getDialogue(npcId)
-    if (dbDialogue) {
-      const dialogue: DialogueTree = {
-        id: dbDialogue.id,
-        npcName: dbDialogue.npcName,
-        nodes: new Map(Object.entries(dbDialogue.nodes as any)),
-        startNodeId: dbDialogue.startNodeId,
-        generatedAt: dbDialogue.generatedAt,
-      }
-      this.dialogueCache.set(npcId, dialogue)
-      return dialogue
-    }
+    // TODO: Check core API for persisted dialogue
+    // const coreDialogue = await coreApi.dialogues.get(npcId)
 
     // Generate new dialogue
     if (!npcDescription) {
@@ -258,9 +241,9 @@ Example format:
 
     const dialogue = await this.generateDialogue(npcId, npcDescription)
 
-    // Save to database (convert Map to object)
-    const nodesObj = Object.fromEntries(dialogue.nodes.entries())
-    await db.saveDialogue(npcId, dialogue.npcName, nodesObj, dialogue.startNodeId)
+    // TODO: Save to core API
+    // const nodesObj = Object.fromEntries(dialogue.nodes.entries())
+    // await coreApi.dialogues.save(npcId, dialogue.npcName, nodesObj, dialogue.startNodeId)
 
     // Cache in memory
     this.dialogueCache.set(npcId, dialogue)
@@ -342,11 +325,12 @@ Include 3-5 conversation branches with natural dialogue.`
 
   /**
    * Store a manually created dialogue tree
+   * TODO: Integrate with core API for persistence
    */
   async setDialogue(npcId: string, tree: DialogueTree): Promise<void> {
-    // Save to database
-    const nodesObj = Object.fromEntries(tree.nodes.entries())
-    await db.saveDialogue(npcId, tree.npcName, nodesObj, tree.startNodeId)
+    // TODO: Save to core API
+    // const nodesObj = Object.fromEntries(tree.nodes.entries())
+    // await coreApi.dialogues.save(npcId, tree.npcName, nodesObj, tree.startNodeId)
 
     // Cache in memory
     this.dialogueCache.set(npcId, tree)
@@ -358,6 +342,7 @@ Include 3-5 conversation branches with natural dialogue.`
 
   /**
    * Get or generate a random table
+   * TODO: Integrate with core API for persistence
    */
   async getTable(tableId: string, description?: string): Promise<RandomTable> {
     // Check in-memory cache
@@ -365,18 +350,8 @@ Include 3-5 conversation branches with natural dialogue.`
       return this.tableCache.get(tableId)!
     }
 
-    // Check database
-    const dbTable = await db.getTable(tableId)
-    if (dbTable) {
-      const table: RandomTable = {
-        id: dbTable.id,
-        name: dbTable.name,
-        entries: dbTable.entries as unknown as RandomTableEntry[],
-        generatedAt: dbTable.generatedAt,
-      }
-      this.tableCache.set(tableId, table)
-      return table
-    }
+    // TODO: Check core API for persisted table
+    // const coreTable = await coreApi.tables.get(tableId)
 
     // Generate new table
     if (!description) {
@@ -385,8 +360,8 @@ Include 3-5 conversation branches with natural dialogue.`
 
     const table = await this.generateTable(tableId, description)
 
-    // Save to database
-    await db.saveTable(tableId, table.name, table.entries)
+    // TODO: Save to core API
+    // await coreApi.tables.save(tableId, table.name, table.entries)
 
     // Cache in memory
     this.tableCache.set(tableId, table)
@@ -451,10 +426,11 @@ Include 10-20 entries with varied weights. Higher weight = more common.`
 
   /**
    * Store a manually created table
+   * TODO: Integrate with core API for persistence
    */
   async setTable(tableId: string, table: RandomTable): Promise<void> {
-    // Save to database
-    await db.saveTable(tableId, table.name, table.entries)
+    // TODO: Save to core API
+    // await coreApi.tables.save(tableId, table.name, table.entries)
 
     // Cache in memory
     this.tableCache.set(tableId, table)

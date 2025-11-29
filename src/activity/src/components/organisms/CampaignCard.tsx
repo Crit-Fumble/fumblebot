@@ -8,10 +8,12 @@ export interface CampaignCardProps {
   testId?: string;
 }
 
+// Map core CampaignStatus to UI StatusType
 const statusMap: Record<Campaign['status'], StatusType> = {
-  running: 'active',
-  stopped: 'stopped',
-  error: 'error',
+  active: 'active',
+  paused: 'stopped',
+  completed: 'stopped',
+  archived: 'stopped',
 };
 
 export function CampaignCard({ campaign, onClick, onLaunch, testId }: CampaignCardProps) {

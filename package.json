@@ -1,6 +1,7 @@
 {
   "name": "fumblebot",
   "version": "1.0.0",
+  "private": true,
   "description": "FumbleBot - AI-powered Discord bot with integrated FoundryVTT management",
   "keywords": [
     "discord",
@@ -20,29 +21,8 @@
     "url": "https://github.com/crit-fumble/fumblebot.git"
   },
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./discord": {
-      "types": "./dist/discord/index.d.ts",
-      "import": "./dist/discord/index.js"
-    },
-    "./ai": {
-      "types": "./dist/ai/index.d.ts",
-      "import": "./dist/ai/index.js"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
   "scripts": {
-    "build": "npm run build:client && tsc",
+    "build": "npm run db:generate && npm run build:client && tsc",
     "build:server": "tsc",
     "build:client": "cd src/activity && npm run build",
     "dev": "tsc --watch",
@@ -51,6 +31,7 @@
     "platform:dev": "tsx src/server.ts",
     "platform:start": "node dist/server.js",
     "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
     "test": "vitest --run",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
@@ -64,17 +45,19 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report tests/results/html",
     "db:setup": "tsx scripts/setup-database.ts",
-    "db:generate": "prisma generate --schema=prisma/schema.prisma",
-    "db:migrate": "prisma migrate dev --schema=prisma/schema.prisma",
-    "db:migrate:prod": "prisma migrate deploy --schema=prisma/schema.prisma",
-    "db:push": "prisma db push --schema=prisma/schema.prisma",
-    "db:studio": "prisma studio --schema=prisma/schema.prisma",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:prod": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:status": "prisma migrate status",
     "pre-generate": "tsx scripts/pre-generate-content.ts",
     "pre-generate:behaviors": "tsx scripts/pre-generate-content.ts --behaviors-only",
     "pre-generate:npcs": "tsx scripts/pre-generate-content.ts --npcs-only",
     "pre-generate:tables": "tsx scripts/pre-generate-content.ts --tables-only",
     "pre-generate:rules": "tsx scripts/pre-generate-content.ts --rules-only",
     "prepare": "husky",
+    "postinstall": "prisma generate || true",
     "scan:secrets": "bash scripts/scan-secrets.sh",
     "deploy": "ssh root@159.203.126.144 'cd /root/fumblebot && bash scripts/server-deploy.sh --force'",
     "deploy:setup": "bash scripts/setup-server-git.sh",
@@ -89,14 +72,13 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "@auth/express": "^0.12.1",
-    "@discord/embedded-app-sdk": "^2.4.0",
+    "@crit-fumble/core": "^9.0.0",
     "@discordjs/voice": "^0.17.0",
     "@modelcontextprotocol/sdk": "^1.23.0",
     "@prisma/adapter-pg": "^7.0.1",
     "@prisma/client": "^7.0.0",
     "cookie-parser": "^1.4.7",
     "discord.js": "^14.16.3",
-    "dockerode": "^4.0.0",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "express-session": "^1.18.2",
@@ -114,6 +96,7 @@
     "@vitest/coverage-v8": "^4.0.14",
     "@vitest/ui": "^4.0.14",
     "husky": "^9.1.7",
+    "node-fetch": "^3.3.2",
     "prisma": "^7.0.0",
     "tsx": "^4.19.4",
     "typescript": "^5.6.3",

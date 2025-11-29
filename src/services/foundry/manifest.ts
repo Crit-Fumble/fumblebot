@@ -1,179 +1,122 @@
 /**
  * Foundry VTT Manifest Parser
- *
- * Fetches and parses Foundry VTT system manifest files (system.json)
- * These manifests contain metadata about game systems like D&D 5e, Pathfinder, etc.
+ * Utilities for fetching and parsing Foundry VTT system manifests
  */
 
 /**
- * Author information from a Foundry manifest
- */
-export interface ManifestAuthor {
-  name: string;
-  url?: string;
-  email?: string;
-  discord?: string;
-}
-
-/**
- * Foundry version compatibility information
- */
-export interface ManifestCompatibility {
-  minimum?: string;
-  verified?: string;
-  maximum?: string;
-}
-
-/**
- * Parsed Foundry VTT system manifest
+ * Foundry VTT manifest structure
  */
 export interface FoundryManifest {
-  id: string;
-  name?: string; // Some manifests use 'name' instead of 'id'
-  title: string;
-  description?: string;
-  version?: string;
-  compatibility?: ManifestCompatibility;
-  authors?: ManifestAuthor[];
-  manifest?: string; // Self-referential manifest URL
-  download?: string; // Download URL for the system
-  url?: string; // Project homepage
-  license?: string;
-  readme?: string;
-  bugs?: string;
-  changelog?: string;
-}
-
-/**
- * Result of parsing a manifest
- * Maps to FoundrySystem model in Prisma
- */
-export interface ParsedManifest {
   systemId: string;
   title: string;
   description?: string;
   version?: string;
-  compatibility?: ManifestCompatibility;
-  authors?: ManifestAuthor[];
   manifestUrl: string;
+  compatibility?: {
+    minimum?: string;
+    verified?: string;
+    maximum?: string;
+  };
+  authors?: Array<{
+    name: string;
+    url?: string;
+    email?: string;
+    discord?: string;
+  }>;
+  url?: string;
+  manifest?: string;
+  download?: string;
 }
 
 /**
- * Validates that a URL looks like a Foundry manifest URL
+ * Validate manifest URL format
  */
 export function isValidManifestUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    // Must be HTTPS (or HTTP for local dev)
-    if (!['https:', 'http:'].includes(parsed.protocol)) {
-      return false;
-    }
-    // Should end in .json or system.json
-    const pathname = parsed.pathname.toLowerCase();
-    if (!pathname.endsWith('.json')) {
-      return false;
-    }
-    return true;
+    return (
+      parsed.protocol === 'https:' &&
+      parsed.pathname.endsWith('.json')
+    );
   } catch {
     return false;
   }
 }
 
 /**
- * Fetches and parses a Foundry system manifest from a URL
- *
- * @param url - The URL to the system.json manifest file
- * @param timeout - Request timeout in milliseconds (default: 10000)
- * @returns Parsed manifest data
- * @throws Error if fetch fails or manifest is invalid
+ * Fetch and parse a Foundry VTT system manifest
  */
-export async function fetchAndParseManifest(
-  url: string,
-  timeout: number = 10000
-): Promise<ParsedManifest> {
-  if (!isValidManifestUrl(url)) {
-    throw new Error('Invalid manifest URL. Must be an HTTPS URL ending in .json');
+export async function fetchAndParseManifest(manifestUrl: string): Promise<FoundryManifest> {
+  if (!isValidManifestUrl(manifestUrl)) {
+    throw new Error('Invalid manifest URL: must be HTTPS and end with .json');
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const response = await fetch(manifestUrl, {
+    headers: {
+      'Accept': 'application/json',
+      'User-Agent': 'FumbleBot/1.0 (https://fumblebot.crit-fumble.com)',
+    },
+  });
 
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'FumbleBot/1.0',
-      },
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch manifest: HTTP ${response.status}`);
-    }
-
-    const contentType = response.headers.get('content-type');
-    if (contentType && !contentType.includes('application/json') && !contentType.includes('text/plain')) {
-      throw new Error(`Invalid content type: ${contentType}. Expected JSON.`);
-    }
-
-    const manifest = (await response.json()) as FoundryManifest;
-
-    // Validate required fields
-    const systemId = manifest.id || manifest.name;
-    if (!systemId) {
-      throw new Error('Manifest missing required field: id or name');
-    }
-
-    if (!manifest.title) {
-      throw new Error('Manifest missing required field: title');
-    }
-
-    return {
-      systemId,
-      title: manifest.title,
-      description: manifest.description,
-      version: manifest.version,
-      compatibility: manifest.compatibility,
-      authors: manifest.authors,
-      manifestUrl: url,
-    };
-  } catch (error) {
-    clearTimeout(timeoutId);
-
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        throw new Error(`Manifest fetch timed out after ${timeout}ms`);
-      }
-      throw error;
-    }
-    throw new Error('Unknown error fetching manifest');
+  if (!response.ok) {
+    throw new Error(`Failed to fetch manifest: ${response.status} ${response.statusText}`);
   }
+
+  const data = await response.json();
+
+  // Validate required fields
+  const systemId = data.id || data.name;
+  if (!systemId) {
+    throw new Error('Manifest missing required field: id or name');
+  }
+
+  const title = data.title || data.name || systemId;
+
+  return {
+    systemId,
+    title,
+    description: data.description,
+    version: data.version,
+    manifestUrl,
+    compatibility: data.compatibility,
+    authors: data.authors,
+    url: data.url,
+    manifest: data.manifest,
+    download: data.download,
+  };
 }
 
 /**
- * Seed manifest URLs for common systems
- * These can be used to pre-populate the system registry
+ * Popular Foundry VTT system manifests for seeding
  */
-export const SEED_MANIFESTS = {
-  // D&D 5th Edition (Official)
-  dnd5e: 'https://github.com/foundryvtt/dnd5e/releases/latest/download/system.json',
+export const SEED_MANIFESTS: Record<string, string> = {
+  // D&D 5e
+  'dnd5e': 'https://raw.githubusercontent.com/foundryvtt/dnd5e/master/system.json',
 
-  // Cypher System (Numenera, The Strange, etc.)
-  cyphersystem: 'https://raw.githubusercontent.com/mrkwnzl/cyphersystem-foundryvtt/main/system.json',
+  // Pathfinder 2e
+  'pf2e': 'https://raw.githubusercontent.com/foundryvtt/pf2e/master/system.json',
 
-  // Pathfinder 2e (Official)
-  pf2e: 'https://github.com/foundryvtt/pf2e/releases/latest/download/system.json',
-} as const;
+  // Pathfinder 1e
+  'pf1': 'https://raw.githubusercontent.com/foundryvtt/pf1/master/system.json',
 
-/**
- * Attempts to fetch a manifest, returning null on failure instead of throwing
- */
-export async function tryFetchManifest(url: string): Promise<ParsedManifest | null> {
-  try {
-    return await fetchAndParseManifest(url);
-  } catch {
-    return null;
-  }
-}
+  // Call of Cthulhu 7e
+  'CoC7': 'https://raw.githubusercontent.com/Miskatonic-Investigative-Society/CoC7-FoundryVTT/main/system.json',
+
+  // Savage Worlds Adventure Edition
+  'swade': 'https://raw.githubusercontent.com/FloRad/swade/main/system.json',
+
+  // Warhammer Fantasy 4e
+  'wfrp4e': 'https://raw.githubusercontent.com/moo-man/WFRP4e-FoundryVTT/master/system.json',
+
+  // Starfinder
+  'sfrpg': 'https://raw.githubusercontent.com/foundryvtt-starfinder/foundryvtt-starfinder/master/system.json',
+
+  // Simple Worldbuilding
+  'worldbuilding': 'https://raw.githubusercontent.com/foundryvtt/worldbuilding/master/system.json',
+
+  // Blades in the Dark
+  'blades-in-the-dark': 'https://raw.githubusercontent.com/megastruktur/bitd/master/system.json',
+
+  // FATE Core
+  'fate-core-official': 'https://raw.githubusercontent.com/Fateful-games/fate-core-official/main/system.json',
+};

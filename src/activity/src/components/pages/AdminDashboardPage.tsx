@@ -60,13 +60,17 @@ export function AdminDashboardPage({
     setIsSubmitting(true);
     try {
       const system = systems.find((s) => s.id === systemId);
+      const now = new Date();
       const newCampaign: Campaign = {
         id: crypto.randomUUID(),
         name,
         systemId,
         systemTitle: system?.title || systemId,
-        description,
-        status: 'stopped',
+        description: description || null,
+        guildId: guildId || '',
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
       };
 
       // TODO: API call to create campaign
