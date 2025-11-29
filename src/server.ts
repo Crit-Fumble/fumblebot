@@ -70,10 +70,40 @@ import {
   chatRateLimiter,
   commandRateLimiter,
 } from './middleware/index.js';
+import { AIService } from './services/ai/service.js';
 import type { PlatformServerConfig } from './models/types.js';
 
 // Re-export types
 export type { Platform, PlatformContext, PlatformServerConfig, ActivityServerConfig } from './models/types.js';
+
+/**
+ * Initialize AI service with API keys from environment
+ */
+function initializeAIService(): void {
+  const ai = AIService.getInstance();
+
+  const anthropicKey = process.env.FUMBLEBOT_ANTHROPIC_API_KEY;
+  if (anthropicKey) {
+    ai.initializeAnthropic({
+      apiKey: anthropicKey,
+      model: 'claude-sonnet-4-20250514',
+      maxTokens: 4096,
+    });
+  } else {
+    console.warn('[Platform] FUMBLEBOT_ANTHROPIC_API_KEY not set - Anthropic AI unavailable');
+  }
+
+  const openaiKey = process.env.FUMBLEBOT_OPENAI_API_KEY;
+  if (openaiKey) {
+    ai.initializeOpenAI({
+      apiKey: openaiKey,
+      model: 'gpt-4o',
+      maxTokens: 4096,
+    });
+  } else {
+    console.warn('[Platform] FUMBLEBOT_OPENAI_API_KEY not set - OpenAI unavailable');
+  }
+}
 
 export class PlatformServer {
   private app: express.Application;
@@ -301,6 +331,9 @@ if (isMainModule && process.argv[1]?.includes('server')) {
   };
 
   console.log('[Platform] Starting server on port', port);
+
+  // Initialize AI service with API keys
+  initializeAIService();
 
   const server = new PlatformServer(config);
 
