@@ -1,14 +1,17 @@
 # FumbleBot Voice Integration
 
-Voice channel integration for FumbleBot Discord bot, enabling sound effect playback from RPG assets.
+Voice channel integration for FumbleBot Discord bot, enabling sound effect playback from RPG assets and voice assistant with wake word detection.
 
 ## Features
 
-### ✅ Implemented (Stubbed)
+### ✅ Implemented
 - Voice channel join/leave
 - Voice connection management
 - Audio playback from URLs, files, and buffers
 - Basic voice commands (`/voice join`, `/voice leave`, `/voice status`)
+- **Voice Assistant** with "Hey FumbleBot" wake word detection
+- **OpenAI Whisper** transcription for voice commands
+- Voice commands: `/voice listen`, `/voice unlisten`
 
 ### 🚧 TODO - Phase 1
 - [ ] RPG Asset database integration
@@ -16,13 +19,14 @@ Voice channel integration for FumbleBot Discord bot, enabling sound effect playb
 - [ ] Asset autocomplete from database
 - [ ] Volume control
 - [ ] Queue system for multiple sounds
+- [ ] OpenAI TTS responses (currently disabled for cost)
 
 ### 📋 TODO - Phase 2
 - [ ] Music streaming
 - [ ] Ambient sound loops
 - [ ] Playlist support
 - [ ] Sound effect triggers from Foundry events
-- [ ] Voice activity detection
+- [ ] Session transcription mode
 
 ## Architecture
 
@@ -115,6 +119,68 @@ Stop current audio playback.
 User: /voice stop
 Bot: ⏹️ Stopped playback
 ```
+
+### `/voice listen`
+Start listening for "Hey FumbleBot" wake word. Currently only available in test guild.
+
+**Example:**
+```
+User: /voice listen
+Bot: 🎧 Voice Assistant Active
+     Now listening in **General Voice**
+
+     Wake Word: "Hey FumbleBot"
+     Example Commands:
+     • "Hey FumbleBot, roll d20"
+     • "Hey FumbleBot, roll 2d6 plus 3"
+     • "Hey FumbleBot, roll initiative"
+     • "Hey FumbleBot, goodbye"
+```
+
+### `/voice unlisten`
+Stop listening for voice commands.
+
+**Example:**
+```
+User: /voice unlisten
+Bot: 🔇 Voice assistant stopped. No longer listening for wake word.
+```
+
+## Voice Assistant
+
+The voice assistant uses OpenAI Whisper for speech-to-text transcription. It listens for the wake word "Hey FumbleBot" followed by a command.
+
+### Architecture
+
+```
+User speaks "Hey FumbleBot, roll d20"
+           ↓
+┌─────────────────────────────────────┐
+│  VoiceListener (listener.ts)        │
+│  • Receives Discord audio stream    │
+│  • Converts PCM to WAV              │
+│  • Sends to OpenAI Whisper API      │
+│  • Detects wake word in transcript  │
+└─────────────────────────────────────┘
+           ↓
+┌─────────────────────────────────────┐
+│  VoiceAssistant (assistant.ts)      │
+│  • Parses voice command             │
+│  • Executes dice rolls, etc.        │
+│  • (Optional) Speaks response       │
+└─────────────────────────────────────┘
+```
+
+### Supported Wake Words
+- "Hey FumbleBot"
+- "Hey Fumble Bot"
+- "Hey Fumble"
+- "FumbleBot"
+- "Okay FumbleBot"
+
+### Cost Estimates
+- **Whisper API**: $0.006/minute (~$0.36/hour of continuous listening)
+- **TTS (disabled)**: $0.015/1K characters
 
 ## Database Integration
 

@@ -23,7 +23,7 @@
 
 import { REST, Routes } from 'discord.js'
 import { config } from 'dotenv'
-import { CommandRegistry } from '../src/discord/commands/registry.js'
+import { CommandRegistry } from '../src/services/discord/commands/registry.js'
 
 // Load environment variables
 config()

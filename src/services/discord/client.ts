@@ -193,9 +193,32 @@ export class FumbleBotClient {
         await this.client.application?.commands.set(allCommands)
         console.log(`[FumbleBot] Registered ${commands.length} commands globally`)
       }
-    } catch (error) {
+    } catch (error: any) {
+      // If guild command registration fails, fall back to global registration
+      if (this.config.guildId && error.code === 10004) {
+        console.warn(`[FumbleBot] Guild ${this.config.guildId} not found, falling back to global registration`)
+        try {
+          const existingCommands = await this.client.application?.commands.fetch()
+          const entryPointCommands = existingCommands
+            ? Array.from(existingCommands.values())
+                .filter(cmd => !cmd.defaultMemberPermissions)
+                .map(cmd => cmd.toJSON())
+            : []
+
+          const commandNames = new Set(commands.map((cmd: any) => cmd.name))
+          const uniqueEntryPointCommands = entryPointCommands.filter((cmd: any) => !commandNames.has(cmd.name))
+          const allCommands = [...commands, ...uniqueEntryPointCommands] as any
+
+          await this.client.application?.commands.set(allCommands)
+          console.log(`[FumbleBot] Registered ${commands.length} commands globally (fallback)`)
+          return
+        } catch (fallbackError) {
+          console.error('[FumbleBot] Failed to register commands globally:', fallbackError)
+        }
+      }
       console.error('[FumbleBot] Failed to register commands:', error)
-      throw error
+      // Don't throw - let the bot continue running even if command registration fails
+      console.warn('[FumbleBot] Bot will continue running but slash commands may not work')
     }
   }
 

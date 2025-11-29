@@ -265,6 +265,57 @@ export const routes: Record<string, RouteDefinition[]> = {
     },
   ],
 
+  // Voice API (for Discord voice channel control via API)
+  voice: [
+    {
+      method: 'get',
+      path: '/api/voice/status',
+      handler: 'handleVoiceStatus',
+      description: 'Get voice connection status for a guild',
+    },
+    {
+      method: 'get',
+      path: '/api/voice/sessions',
+      handler: 'handleVoiceSessions',
+      description: 'Get all active voice sessions',
+    },
+    {
+      method: 'post',
+      path: '/api/voice/join',
+      handler: 'handleVoiceJoin',
+      description: 'Join a voice channel',
+    },
+    {
+      method: 'post',
+      path: '/api/voice/leave',
+      handler: 'handleVoiceLeave',
+      description: 'Leave a voice channel',
+    },
+    {
+      method: 'post',
+      path: '/api/voice/play',
+      handler: 'handleVoicePlay',
+      description: 'Play audio from URL',
+    },
+    {
+      method: 'post',
+      path: '/api/voice/stop',
+      handler: 'handleVoiceStop',
+      description: 'Stop audio playback',
+    },
+    {
+      method: 'post',
+      path: '/api/voice/listen/start',
+      handler: 'handleVoiceListenStart',
+      description: 'Start wake word listening',
+    },
+    {
+      method: 'post',
+      path: '/api/voice/listen/stop',
+      handler: 'handleVoiceListenStop',
+      description: 'Stop wake word listening',
+    },
+  ],
 };
 
 /**

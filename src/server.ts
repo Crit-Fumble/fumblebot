@@ -64,11 +64,24 @@ import {
   validateAISecret,
 } from './controllers/ai.js';
 import {
+  handleVoiceStatus,
+  handleVoiceSessions,
+  handleVoiceJoin,
+  handleVoiceLeave,
+  handleVoicePlay,
+  handleVoiceStop,
+  handleVoiceListenStart,
+  handleVoiceListenStop,
+  validateVoiceSecret,
+} from './controllers/voice.js';
+import {
   chatRateLimiter,
   commandRateLimiter,
 } from './middleware/index.js';
 import { AIService } from './services/ai/service.js';
 import { GradientService } from './services/ai/gradient.js';
+import { FumbleBotClient, setFumbleBotClient } from './services/discord/index.js';
+import { voiceAssistant } from './services/discord/voice/index.js';
 import type { PlatformServerConfig } from './models/types.js';
 
 // Re-export types
@@ -186,10 +199,18 @@ export class PlatformServer {
       }
     }
 
+    // Register voice routes with API secret authentication
+    for (const route of routes.voice || []) {
+      const handler = this.getHandler(route.handler);
+      if (handler) {
+        this.app[route.method](route.path, validateVoiceSecret, handler);
+      }
+    }
+
     // Register all other routes from the routes definition
     for (const [category, categoryRoutes] of Object.entries(routes)) {
       // Skip already handled categories
-      if (category === 'chat' || category === 'commands' || category === 'admin' || category === 'prompts' || category === 'ai') continue;
+      if (category === 'chat' || category === 'commands' || category === 'admin' || category === 'prompts' || category === 'ai' || category === 'voice') continue;
       for (const route of categoryRoutes) {
         const handler = this.getHandler(route.handler);
         if (handler) {
@@ -268,6 +289,16 @@ export class PlatformServer {
       handleAIDMResponse: (req, res) => handleAIDMResponse(req, res),
       handleAICreatureBehavior: (req, res) => handleAICreatureBehavior(req, res),
       handleAIGenerateImage: (req, res) => handleAIGenerateImage(req, res),
+
+      // Voice API
+      handleVoiceStatus: (req, res) => handleVoiceStatus(req, res),
+      handleVoiceSessions: (req, res) => handleVoiceSessions(req, res),
+      handleVoiceJoin: (req, res) => handleVoiceJoin(req, res),
+      handleVoiceLeave: (req, res) => handleVoiceLeave(req, res),
+      handleVoicePlay: (req, res) => handleVoicePlay(req, res),
+      handleVoiceStop: (req, res) => handleVoiceStop(req, res),
+      handleVoiceListenStart: (req, res) => handleVoiceListenStart(req, res),
+      handleVoiceListenStop: (req, res) => handleVoiceListenStop(req, res),
     };
 
     return handlers[name] || null;
@@ -326,8 +357,35 @@ if (isMainModule) {
 
   const server = new PlatformServer(config);
 
-  server.start().then(() => {
+  // Initialize Discord bot if token is provided
+  let discordBot: FumbleBotClient | null = null;
+  const discordToken = process.env.FUMBLEBOT_DISCORD_TOKEN;
+  const discordClientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID;
+
+  server.start().then(async () => {
     console.log('[Platform] Ready at http://localhost:' + port + '/discord/activity');
+
+    // Start Discord bot
+    if (discordToken && discordClientId) {
+      try {
+        discordBot = new FumbleBotClient({
+          token: discordToken,
+          clientId: discordClientId,
+          clientSecret: process.env.FUMBLEBOT_DISCORD_CLIENT_SECRET || '',
+          publicKey: process.env.FUMBLEBOT_DISCORD_PUBLIC_KEY || '',
+          guildId: process.env.FUMBLEBOT_DISCORD_GUILD_ID,
+        });
+        await discordBot.start();
+        setFumbleBotClient(discordBot); // Make bot available to voice API
+        voiceAssistant.setDiscordClient(discordBot.client); // Enable voice state tracking
+        console.log('[Platform] Discord bot started');
+      } catch (err) {
+        console.error('[Platform] Failed to start Discord bot:', err);
+        // Continue running API server even if bot fails
+      }
+    } else {
+      console.warn('[Platform] FUMBLEBOT_DISCORD_TOKEN not set - Discord bot disabled');
+    }
   }).catch((err) => {
     console.error('[Platform] Failed to start:', err);
     process.exit(1);
@@ -335,12 +393,16 @@ if (isMainModule) {
 
   process.on('SIGINT', async () => {
     console.log('\n[Platform] Shutting down...');
+    setFumbleBotClient(null);
+    if (discordBot) await discordBot.stop();
     await server.stop();
     process.exit(0);
   });
 
   process.on('SIGTERM', async () => {
     console.log('\n[Platform] Shutting down...');
+    setFumbleBotClient(null);
+    if (discordBot) await discordBot.stop();
     await server.stop();
     process.exit(0);
   });

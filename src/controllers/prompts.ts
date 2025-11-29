@@ -281,6 +281,59 @@ export async function handleDeletePromptPartial(req: Request, res: Response): Pr
 }
 
 /**
+ * Fetch prompts for a specific context (direct service function)
+ * Can be called internally without HTTP request
+ */
+export async function getPromptsForContext(params: {
+  guildId: string;
+  channelId?: string;
+  categoryId?: string;
+  threadId?: string;
+  roleIds?: string[];
+}): Promise<{ prompts: any[]; combinedContent: string }> {
+  const { guildId, channelId, categoryId, threadId, roleIds } = params;
+  const prisma = getPrisma();
+
+  // Build OR conditions for all applicable targets
+  const targetConditions: Array<{ targetType: PromptTargetType; targetId: string }> = [];
+
+  if (channelId) {
+    targetConditions.push({ targetType: 'channel', targetId: channelId });
+  }
+  if (categoryId) {
+    targetConditions.push({ targetType: 'category', targetId: categoryId });
+  }
+  if (threadId) {
+    targetConditions.push({ targetType: 'thread', targetId: threadId });
+  }
+  if (roleIds) {
+    for (const roleId of roleIds) {
+      targetConditions.push({ targetType: 'role', targetId: roleId.trim() });
+    }
+  }
+
+  if (targetConditions.length === 0) {
+    return { prompts: [], combinedContent: '' };
+  }
+
+  const prompts = await prisma.promptPartial.findMany({
+    where: {
+      guildId,
+      isEnabled: true,
+      OR: targetConditions,
+    },
+    orderBy: { priority: 'desc' },
+  });
+
+  // Combine prompts by priority (higher priority first)
+  const combinedContent = prompts
+    .map(p => p.content)
+    .join('\n');
+
+  return { prompts, combinedContent };
+}
+
+/**
  * GET /api/admin/guilds/:guildId/prompts/for-context
  * Get all applicable prompt partials for a specific context
  * Used internally to build the AI prompt for a given channel/user

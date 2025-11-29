@@ -49,10 +49,13 @@ export class VoiceClient {
     console.log(`[Voice] Joining channel ${channelId} in guild ${guildId}`);
 
     // Create connection
+    // selfDeaf: false is required to receive audio for voice commands
     const connection = joinVoiceChannel({
       channelId: channel.id,
       guildId: channel.guild.id,
       adapterCreator: channel.guild.voiceAdapterCreator as any,
+      selfDeaf: false,
+      selfMute: false,
     });
 
     // Create audio player
@@ -272,6 +275,14 @@ export class VoiceClient {
       guildId: session.guildId,
       channelId: session.channelId,
     }));
+  }
+
+  /**
+   * Get the voice connection for a guild
+   */
+  getConnection(guildId: string): VoiceConnection | null {
+    const session = this.sessions.get(guildId);
+    return session?.connection ?? null;
   }
 }
 
