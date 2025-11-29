@@ -2,6 +2,9 @@
 # FumbleBot Quick Deploy Script
 # Builds locally and syncs dist + deps to production
 # Much faster than full git-based deploy
+#
+# Usage: npm run deploy
+#        FUMBLEBOT_SERVER=user@host FUMBLEBOT_DIR=/path npm run deploy
 
 set -e
 
@@ -11,16 +14,33 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-SERVER="root@fumblebot.crit-fumble.com"
-REMOTE_DIR="/root/fumblebot"
+# Configuration - can be overridden with environment variables
+# Default: fumblebot user (non-root for security)
+# Fallback to root if fumblebot user not set up yet
+SERVER="${FUMBLEBOT_SERVER:-fumblebot@fumblebot.crit-fumble.com}"
+REMOTE_DIR="${FUMBLEBOT_DIR:-/home/fumblebot/app}"
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}     FumbleBot Quick Deploy${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
+echo -e "${BLUE}Server:${NC} $SERVER"
+echo -e "${BLUE}Path:${NC}   $REMOTE_DIR"
+echo ""
+
+# Step 0: Verify SSH connectivity
+echo -e "${YELLOW}Step 0/5: Verifying SSH connectivity...${NC}"
+if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$SERVER" "echo 'SSH OK'" 2>/dev/null; then
+    echo -e "${RED}Cannot connect to $SERVER${NC}"
+    echo -e "${YELLOW}Check your SSH key and server address${NC}"
+    echo -e "${YELLOW}You can override with: FUMBLEBOT_SERVER=user@host npm run deploy${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ SSH connection verified${NC}"
+echo ""
 
 # Step 1: Build locally
-echo -e "${YELLOW}Step 1/4: Building locally...${NC}"
+echo -e "${YELLOW}Step 1/5: Building locally...${NC}"
 npm run build
 if [ $? -ne 0 ]; then
     echo -e "${RED}Build failed${NC}"
@@ -29,30 +49,47 @@ fi
 echo -e "${GREEN}✓ Build complete${NC}"
 echo ""
 
-# Step 2: Create tarball of dist
-echo -e "${YELLOW}Step 2/4: Creating deployment package...${NC}"
-tar -czf /tmp/fumblebot-dist.tar.gz dist prisma
+# Step 2: Create tarball of dist and prisma
+echo -e "${YELLOW}Step 2/5: Creating deployment package...${NC}"
+tar -czf /tmp/fumblebot-dist.tar.gz dist prisma package.json package-lock.json
 echo -e "${GREEN}✓ Package created${NC}"
 echo ""
 
 # Step 3: Upload and extract on server
-echo -e "${YELLOW}Step 3/4: Uploading to server...${NC}"
-scp /tmp/fumblebot-dist.tar.gz $SERVER:$REMOTE_DIR/
-ssh $SERVER "cd $REMOTE_DIR && rm -rf dist && tar -xzf fumblebot-dist.tar.gz && rm fumblebot-dist.tar.gz && npx prisma generate"
+echo -e "${YELLOW}Step 3/5: Uploading to server...${NC}"
+scp /tmp/fumblebot-dist.tar.gz "$SERVER:$REMOTE_DIR/"
 if [ $? -ne 0 ]; then
-    echo -e "${RED}Upload/extract failed${NC}"
+    echo -e "${RED}Upload failed${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ Package uploaded${NC}"
+echo ""
+
+# Step 4: Extract and setup on server
+echo -e "${YELLOW}Step 4/5: Extracting and setting up...${NC}"
+ssh "$SERVER" "cd $REMOTE_DIR && \
+    rm -rf dist prisma && \
+    tar -xzf fumblebot-dist.tar.gz && \
+    rm fumblebot-dist.tar.gz && \
+    npm ci --production 2>/dev/null || npm install --production && \
+    npx prisma generate"
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Setup failed${NC}"
     exit 1
 fi
 echo -e "${GREEN}✓ Code deployed${NC}"
 echo ""
 
-# Step 4: Restart PM2
-echo -e "${YELLOW}Step 4/4: Restarting service...${NC}"
-ssh $SERVER "fuser -k 3000/tcp 2>/dev/null; cd $REMOTE_DIR && pm2 delete fumblebot 2>/dev/null; pm2 start dist/server.js --name fumblebot && sleep 3 && curl -s http://localhost:3000/health"
+# Step 5: Restart service
+echo -e "${YELLOW}Step 5/5: Restarting service...${NC}"
+ssh "$SERVER" "cd $REMOTE_DIR && \
+    pm2 restart fumblebot 2>/dev/null || pm2 start dist/server.js --name fumblebot && \
+    sleep 3"
 if [ $? -ne 0 ]; then
     echo -e "${RED}Service restart failed${NC}"
     exit 1
 fi
+echo -e "${GREEN}✓ Service restarted${NC}"
 
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -62,5 +99,13 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 # Verify health
 echo ""
 echo -e "${BLUE}Health Check:${NC}"
-curl -s https://fumblebot.crit-fumble.com/api/ai/health | head -c 200
+sleep 2
+HEALTH=$(ssh "$SERVER" "curl -s http://localhost:3000/health" 2>/dev/null || echo "")
+if echo "$HEALTH" | grep -q "ok"; then
+    echo -e "${GREEN}✓ Health check passed${NC}"
+    echo "$HEALTH"
+else
+    echo -e "${YELLOW}⚠ Health check inconclusive - service may still be starting${NC}"
+    echo "Check logs with: ssh $SERVER 'pm2 logs fumblebot --lines 50'"
+fi
 echo ""

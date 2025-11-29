@@ -32,8 +32,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-APP_DIR="/root/fumblebot"
-LOG_FILE="/root/fumblebot/deploy.log"
+# Configuration - can be overridden with environment variables
+APP_DIR="${FUMBLEBOT_DIR:-/home/fumblebot/app}"
+LOG_FILE="${APP_DIR}/deploy.log"
 LOCK_FILE="/tmp/fumblebot-deploy.lock"
 
 # Ensure app directory exists

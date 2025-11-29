@@ -181,22 +181,12 @@ export function getPrisma(): PrismaClientType {
 }
 
 // Re-export all generated types
+// NOTE: Campaign-related types (FumbleCampaign, FumbleCharacter, etc.) are now in @crit-fumble/core
 export type {
   Guild,
   GuildMember,
-  ScriptedBehavior,
-  DialogueTree,
-  RandomTable,
-  CachedRule,
   DiceRoll,
   Session,
-  FumbleCampaign,
-  FumbleCharacter,
-  FoundryWorldSnapshot,
-  FumbleAsset,
-  FoundrySystem,
-  FumbleSession,
-  FumbleMessage,
   BotCommand,
   AuthUser,
   AuthSession,
