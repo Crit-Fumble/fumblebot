@@ -22,11 +22,9 @@
   },
   "type": "module",
   "scripts": {
-    "build": "npm run db:generate && npm run build:client && tsc",
+    "build": "npm run db:generate && tsc",
     "build:server": "tsc",
-    "build:client": "cd src/activity && npm run build",
     "dev": "tsc --watch",
-    "dev:client": "cd src/activity && npm run dev",
     "start": "node dist/index.js",
     "platform:dev": "tsx src/server.ts",
     "platform:start": "node dist/server.js",
