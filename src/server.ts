@@ -308,10 +308,10 @@ export const ActivityServer = PlatformServer;
 export type ActivityServer = PlatformServer;
 
 // Standalone server entry point
-// Check if this file is being run directly (works with both node and tsx)
-const isMainModule = import.meta.url.includes('server.ts') || import.meta.url.includes('server.js');
+// Check if running as main module - works with node, tsx, and PM2
+const isMainModule = import.meta.url.endsWith('server.ts') || import.meta.url.endsWith('server.js');
 
-if (isMainModule && process.argv[1]?.includes('server')) {
+if (isMainModule) {
   const port = parseInt(process.env.PORT || '3000');
   const config = {
     port,
