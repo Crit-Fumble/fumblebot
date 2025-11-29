@@ -284,6 +284,31 @@ export class VoiceClient {
     const session = this.sessions.get(guildId);
     return session?.connection ?? null;
   }
+
+  /**
+   * Wait for voice connection to be fully ready
+   * This ensures the audio player is properly initialized before speaking
+   */
+  async waitForReady(guildId: string, timeoutMs: number = 5000): Promise<boolean> {
+    const session = this.sessions.get(guildId);
+    if (!session) {
+      return false;
+    }
+
+    // Check if already ready
+    if (session.connection.state.status === VoiceConnectionStatus.Ready) {
+      return true;
+    }
+
+    // Wait for ready state
+    try {
+      await entersState(session.connection, VoiceConnectionStatus.Ready, timeoutMs);
+      return true;
+    } catch {
+      console.warn(`[Voice] Connection not ready after ${timeoutMs}ms`);
+      return false;
+    }
+  }
 }
 
 // Singleton instance

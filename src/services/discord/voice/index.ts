@@ -14,5 +14,7 @@ export {
   voiceAssistant,
   type VoiceAssistantConfig,
   type VoiceCommand,
+  type TranscriptionEntry,
+  type SessionTranscript,
 } from './assistant.js';
 export type { SoundEffectRequest, VoiceStatus, RpgSoundAsset } from './types.js';

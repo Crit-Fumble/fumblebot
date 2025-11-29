@@ -15,8 +15,8 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration - can be overridden with environment variables
-# Default: fumblebot user (non-root for security)
-# Fallback to root if fumblebot user not set up yet
+# Production server uses fumblebot user (non-root for security)
+# Systemd service runs as fumblebot user from /home/fumblebot/app
 SERVER="${FUMBLEBOT_SERVER:-fumblebot@fumblebot.crit-fumble.com}"
 REMOTE_DIR="${FUMBLEBOT_DIR:-/home/fumblebot/app}"
 
@@ -53,16 +53,16 @@ echo ""
 echo -e "${YELLOW}Step 2/5: Creating deployment package...${NC}"
 # Include node_modules to avoid memory-intensive npm install on small droplets
 # Use --exclude to skip devDependencies-only packages and build caches
+# Note: --exclude options must come BEFORE the files to include
+# Keep 'prisma' package - needed for prisma generate on server
 tar -czf /tmp/fumblebot-dist.tar.gz \
-    dist prisma package.json package-lock.json \
-    node_modules \
     --exclude='node_modules/.cache' \
     --exclude='node_modules/@types' \
     --exclude='node_modules/typescript' \
     --exclude='node_modules/vitest' \
     --exclude='node_modules/@vitest' \
     --exclude='node_modules/husky' \
-    --exclude='node_modules/prisma'
+    dist prisma package.json package-lock.json node_modules
 echo -e "${GREEN}✓ Package created ($(du -h /tmp/fumblebot-dist.tar.gz | cut -f1))${NC}"
 echo ""
 
@@ -90,13 +90,13 @@ fi
 echo -e "${GREEN}✓ Code deployed${NC}"
 echo ""
 
-# Step 5: Restart service
+# Step 5: Restart service (using systemd via sudo -n for non-interactive)
 echo -e "${YELLOW}Step 5/5: Restarting service...${NC}"
-ssh "$SERVER" "cd $REMOTE_DIR && \
-    pm2 restart fumblebot 2>/dev/null || pm2 start dist/server.js --name fumblebot && \
-    sleep 3"
+ssh "$SERVER" "sudo -n systemctl restart fumblebot && sleep 3"
 if [ $? -ne 0 ]; then
     echo -e "${RED}Service restart failed${NC}"
+    echo -e "${YELLOW}Note: fumblebot user needs passwordless sudo${NC}"
+    echo -e "${YELLOW}Run: ssh root@fumblebot.crit-fumble.com 'echo \"fumblebot ALL=(ALL) NOPASSWD: ALL\" > /etc/sudoers.d/fumblebot'${NC}"
     exit 1
 fi
 echo -e "${GREEN}✓ Service restarted${NC}"
@@ -116,6 +116,6 @@ if echo "$HEALTH" | grep -q "ok"; then
     echo "$HEALTH"
 else
     echo -e "${YELLOW}⚠ Health check inconclusive - service may still be starting${NC}"
-    echo "Check logs with: ssh $SERVER 'pm2 logs fumblebot --lines 50'"
+    echo "Check logs with: ssh $SERVER 'tail -50 $REMOTE_DIR/fumblebot.log'"
 fi
 echo ""

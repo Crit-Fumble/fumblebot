@@ -20,6 +20,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { FoundryClient, getScreenshotService } from '../services/foundry/index.js';
 import { AIService } from '../services/ai/service.js';
+import { getContainerClient, type UserContext } from '../services/container/index.js';
 import { readFile } from 'fs/promises';
 import type { prisma } from '../services/db/client.js';
 
@@ -91,9 +92,9 @@ class FumbleBotMCPServer {
           return await this.handleFumbleTool(name, args);
         }
 
-        // Docker tools (for Foundry instance management)
-        if (name.startsWith('docker_')) {
-          return await this.handleDockerTool(name, args);
+        // Container tools (sandboxed terminal environment)
+        if (name.startsWith('container_')) {
+          return await this.handleContainerTool(name, args);
         }
 
         throw new Error(`Unknown tool: ${name}`);
@@ -362,60 +363,106 @@ class FumbleBotMCPServer {
         },
       },
 
-      // === Docker Tools - Foundry Instance Management ===
+      // === Container Tools - Sandboxed Terminal Environment ===
       {
-        name: 'docker_list_instances',
-        description: 'List all Foundry VTT Docker containers (running and stopped).',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-        },
-      },
-      {
-        name: 'docker_start_instance',
-        description: 'Start a Foundry VTT Docker container by name or ID.',
+        name: 'container_start',
+        description: 'Start a sandboxed container for a guild/channel. Required before executing commands.',
         inputSchema: {
           type: 'object',
           properties: {
-            name: {
+            guildId: {
               type: 'string',
-              description: 'Container name or ID',
+              description: 'Discord guild ID',
+            },
+            channelId: {
+              type: 'string',
+              description: 'Discord channel ID',
+            },
+            userId: {
+              type: 'string',
+              description: 'Discord user ID',
+            },
+            userName: {
+              type: 'string',
+              description: 'Username for container prompt',
             },
           },
-          required: ['name'],
+          required: ['guildId', 'channelId', 'userId'],
         },
       },
       {
-        name: 'docker_stop_instance',
-        description: 'Stop a running Foundry VTT Docker container.',
+        name: 'container_stop',
+        description: 'Stop a running container for a guild/channel.',
         inputSchema: {
           type: 'object',
           properties: {
-            name: {
+            guildId: {
               type: 'string',
-              description: 'Container name or ID',
+              description: 'Discord guild ID',
+            },
+            channelId: {
+              type: 'string',
+              description: 'Discord channel ID',
+            },
+            userId: {
+              type: 'string',
+              description: 'Discord user ID',
             },
           },
-          required: ['name'],
+          required: ['guildId', 'channelId', 'userId'],
         },
       },
       {
-        name: 'docker_instance_logs',
-        description: 'Get logs from a Foundry VTT Docker container.',
+        name: 'container_status',
+        description: 'Get status of a container for a guild/channel.',
         inputSchema: {
           type: 'object',
           properties: {
-            name: {
+            guildId: {
               type: 'string',
-              description: 'Container name or ID',
+              description: 'Discord guild ID',
             },
-            tail: {
+            channelId: {
+              type: 'string',
+              description: 'Discord channel ID',
+            },
+            userId: {
+              type: 'string',
+              description: 'Discord user ID',
+            },
+          },
+          required: ['guildId', 'channelId', 'userId'],
+        },
+      },
+      {
+        name: 'container_exec',
+        description: 'Execute a command in a container and get output. Useful for installing games/mods or running shell commands.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            guildId: {
+              type: 'string',
+              description: 'Discord guild ID',
+            },
+            channelId: {
+              type: 'string',
+              description: 'Discord channel ID',
+            },
+            userId: {
+              type: 'string',
+              description: 'Discord user ID',
+            },
+            command: {
+              type: 'string',
+              description: 'Shell command to execute',
+            },
+            timeout: {
               type: 'number',
-              description: 'Number of lines to retrieve',
-              default: 100,
+              description: 'Command timeout in milliseconds',
+              default: 30000,
             },
           },
-          required: ['name'],
+          required: ['guildId', 'channelId', 'userId', 'command'],
         },
       },
 
@@ -566,53 +613,75 @@ class FumbleBotMCPServer {
   }
 
   /**
-   * Handle Docker tools for Foundry instance management
+   * Handle Container tools for sandboxed terminal environment
    */
-  private async handleDockerTool(name: string, args: any) {
-    // TODO: Implement Docker management with dockerode
+  private async handleContainerTool(name: string, args: any) {
+    const containerClient = getContainerClient();
+
+    // Build user context from args
+    const context: UserContext = {
+      userId: args.userId,
+      userName: args.userName,
+      guildId: args.guildId,
+      channelId: args.channelId,
+    };
+
     switch (name) {
-      case 'docker_list_instances':
+      case 'container_start': {
+        const result = await containerClient.start(context);
         return {
           content: [
             {
               type: 'text',
-              text: 'Docker instance listing not yet implemented',
+              text: JSON.stringify(result, null, 2),
             },
           ],
         };
+      }
 
-      case 'docker_start_instance':
+      case 'container_stop': {
+        const result = await containerClient.stop(context);
         return {
           content: [
             {
               type: 'text',
-              text: `Docker start for ${args.name} not yet implemented`,
+              text: JSON.stringify(result, null, 2),
             },
           ],
         };
+      }
 
-      case 'docker_stop_instance':
+      case 'container_status': {
+        const result = await containerClient.status(context);
         return {
           content: [
             {
               type: 'text',
-              text: `Docker stop for ${args.name} not yet implemented`,
+              text: JSON.stringify(result, null, 2),
             },
           ],
         };
+      }
 
-      case 'docker_instance_logs':
+      case 'container_exec': {
+        const result = await containerClient.exec(context, {
+          command: args.command,
+          timeout: args.timeout,
+        });
         return {
           content: [
             {
               type: 'text',
-              text: `Docker logs for ${args.name} not yet implemented`,
+              text: result.success
+                ? result.stdout || '(no output)'
+                : `Error (exit ${result.exitCode}): ${result.stderr || result.stdout || 'unknown error'}`,
             },
           ],
         };
+      }
 
       default:
-        throw new Error(`Unknown Docker tool: ${name}`);
+        throw new Error(`Unknown Container tool: ${name}`);
     }
   }
 
@@ -923,7 +992,7 @@ class FumbleBotMCPServer {
     console.error('  - foundry_*   : Foundry VTT operations');
     console.error('  - anthropic_* : Claude (Sonnet, Haiku) operations');
     console.error('  - openai_*    : OpenAI (GPT-4o, DALL-E) operations');
-    console.error('  - docker_*    : Docker/Foundry instance management');
+    console.error('  - container_* : Sandboxed container management (via Core API)');
     console.error('  - fumble_*    : FumbleBot utilities (dice, NPC, lore)');
   }
 }

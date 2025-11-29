@@ -149,12 +149,24 @@ async function handleJoin(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  await interaction.deferReply();
+  // Show loading state immediately
+  const loadingEmbed = new EmbedBuilder()
+    .setTitle('⏳ Connecting to Voice...')
+    .setDescription(`Joining **${voiceChannel.name}** and initializing audio system...`)
+    .setColor(0xfbbf24); // Yellow for loading
+
+  await interaction.reply({ embeds: [loadingEmbed] });
 
   try {
     if (canListen) {
-      // Start voice assistant (joins channel + starts listening)
-      await voiceAssistant.startListening(voiceChannel);
+      // Get the text channel for transcript posting
+      // Use the channel where the command was invoked
+      const textChannel = interaction.channel?.isTextBased() && !interaction.channel.isDMBased()
+        ? interaction.channel
+        : undefined;
+
+      // Start voice assistant (joins channel + starts listening + plays ready sound)
+      await voiceAssistant.startListening(voiceChannel, textChannel as any);
 
       const embed = new EmbedBuilder()
         .setTitle('🎧 Voice Assistant Active')
@@ -164,6 +176,13 @@ async function handleJoin(interaction: ChatInputCommandInteraction) {
           {
             name: 'Wake Word',
             value: '"Hey FumbleBot"',
+            inline: true,
+          },
+          {
+            name: 'Transcription',
+            value: textChannel
+              ? `Transcripts will be posted to <#${textChannel.id}>`
+              : 'No text channel for transcripts',
             inline: true,
           },
           {
@@ -190,9 +209,11 @@ async function handleJoin(interaction: ChatInputCommandInteraction) {
     }
   } catch (error) {
     console.error('[Voice] Error joining channel:', error);
-    await interaction.editReply({
-      content: `❌ Failed to join voice channel: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    });
+    const errorEmbed = new EmbedBuilder()
+      .setTitle('❌ Failed to Join Voice')
+      .setDescription(`${error instanceof Error ? error.message : 'Unknown error'}`)
+      .setColor(0xef4444); // Red for error
+    await interaction.editReply({ embeds: [errorEmbed] });
   }
 }
 

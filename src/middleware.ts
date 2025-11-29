@@ -7,6 +7,7 @@ import express, { type Application, type Request, type Response, type NextFuncti
 import session from 'express-session';
 import cookieParser from 'cookie-parser';
 import { setupCoreProxy, type CoreProxyConfig, type CoreUserInfo } from './middleware/proxy/index.js';
+import { setupContainerProxy, type ContainerProxyConfig } from './services/container/index.js';
 
 // Extend Express session with our user data
 declare module 'express-session' {
@@ -373,6 +374,71 @@ export function setupCoreServerProxy(app: Application): void {
 }
 
 /**
+ * Setup container proxy for Discord Activity
+ *
+ * Forwards container API requests from Discord Activity to Core.
+ * This enables the activity client to manage containers (start, stop, exec, terminal).
+ *
+ * Paths proxied:
+ * - /.proxy/api/container/start - Start a container for guild/channel
+ * - /.proxy/api/container/stop - Stop a container
+ * - /.proxy/api/container/status - Get container status
+ * - /.proxy/api/container/exec - Execute command in container (for MCP tools)
+ *
+ * Headers added:
+ * - X-Core-Secret: Service auth secret
+ * - X-User-Id: Discord user ID (from session or request headers)
+ * - X-User-Name: Username for container prompt
+ * - X-Guild-Id: Guild ID from Activity SDK
+ * - X-Channel-Id: Channel ID from Activity SDK
+ */
+export function setupContainerApiProxy(app: Application): void {
+  // Use DO private network for internal traffic (10.116.0.4:4000)
+  // Falls back to public URL for local development
+  const coreBaseUrl = process.env.CORE_SERVER_URL || 'http://10.116.0.4';
+  const corePort = process.env.CORE_SERVER_PORT || '4000';
+  const coreUrl = `${coreBaseUrl}:${corePort}`;
+
+  const coreSecret = process.env.CORE_SECRET;
+  const debug = process.env.NODE_ENV !== 'production';
+
+  // Only setup if CORE_SECRET is available
+  if (!coreSecret) {
+    console.warn('[Middleware] Container proxy disabled (CORE_SECRET not set)');
+    return;
+  }
+
+  console.log(`[Middleware] Setting up container proxy to ${coreUrl}`);
+
+  setupContainerProxy(app, {
+    coreUrl,
+    coreSecret,
+    proxyPrefix: '/.proxy',
+    debug,
+    // Extract user context from session or request headers
+    getUserContext: (req: Request) => {
+      // Try session first
+      const sessionUser = getSessionUser(req);
+
+      // Get guild/channel from headers (set by Activity SDK client)
+      const guildId = req.get('x-guild-id') || (req.body?.guildId as string);
+      const channelId = req.get('x-channel-id') || (req.body?.channelId as string);
+
+      if (!guildId || !channelId) {
+        return null;
+      }
+
+      return {
+        userId: sessionUser?.discordId || req.get('x-user-id') || 'anonymous',
+        userName: sessionUser?.username || req.get('x-user-name'),
+        guildId,
+        channelId,
+      };
+    },
+  });
+}
+
+/**
  * Setup all middleware
  */
 export function setupAllMiddleware(app: Application): void {
@@ -384,4 +450,8 @@ export function setupAllMiddleware(app: Application): void {
   // Setup core server proxy for activity-related requests
   // This must be set up BEFORE routes so the proxy can intercept matching paths
   setupCoreServerProxy(app);
+
+  // Setup container proxy for Discord Activity (/.proxy/api/container/*)
+  // This proxies container management requests to Core via DO private network
+  setupContainerApiProxy(app);
 }

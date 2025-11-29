@@ -10,20 +10,23 @@ import {
   type VoiceConnection,
   type VoiceReceiver,
 } from '@discordjs/voice';
-import { Transform, Readable } from 'stream';
+import { Transform, Readable, pipeline } from 'stream';
 import { EventEmitter } from 'events';
 import OpenAI from 'openai';
+// @ts-ignore - prism-media doesn't have types
+import prism from 'prism-media';
 
 // Whisper expects 16kHz, mono, 16-bit PCM
-// Discord provides 48kHz, stereo, 16-bit PCM (Opus decoded)
+// Discord receiver provides raw Opus packets - we decode to 48kHz stereo 16-bit PCM
 const DISCORD_SAMPLE_RATE = 48000;
 const WHISPER_SAMPLE_RATE = 16000;
 const SILENCE_THRESHOLD_MS = 1500; // 1.5 seconds of silence = end of utterance
-const MIN_AUDIO_DURATION_MS = 1000; // Minimum 1 second to avoid hallucinations
+const MIN_AUDIO_DURATION_MS = 500; // Minimum 0.5 second for short commands like "roll d20"
 const MAX_AUDIO_DURATION_MS = 10000; // Maximum audio buffer (10 seconds)
 
-// Default Whisper prompt to improve transcription accuracy and reduce hallucinations
-const DEFAULT_WHISPER_PROMPT = 'Hey FumbleBot, roll d20, roll initiative, fumblebot, goodbye';
+// Default Whisper prompt to improve transcription accuracy
+// NOTE: Do NOT include wake words in the prompt - Whisper hallucinates the prompt when there's silence
+const DEFAULT_WHISPER_PROMPT = 'TTRPG game session, dice rolls, initiative, attack, damage, saving throw';
 
 // Wake words to detect
 const WAKE_WORDS = [
@@ -50,6 +53,10 @@ export interface UserAudioState {
   lastAudioTime: number;
   isRecording: boolean;
   silenceTimeout?: NodeJS.Timeout;
+  /** Active audio stream subscription - must be cleaned up */
+  audioStream?: ReturnType<VoiceReceiver['subscribe']>;
+  /** Opus decoder - must be cleaned up with audio stream */
+  decoder?: any;
 }
 
 export class VoiceListener extends EventEmitter {
@@ -115,11 +122,15 @@ export class VoiceListener extends EventEmitter {
 
     console.log(`[VoiceListener] Stopping listener on guild ${this.guildId}`);
 
-    // Clean up all user states
-    for (const state of this.userStates.values()) {
-      if (state.silenceTimeout) {
-        clearTimeout(state.silenceTimeout);
-      }
+    // Remove speaking event listeners to prevent new subscriptions
+    if (this.receiver) {
+      this.receiver.speaking.removeAllListeners('start');
+      this.receiver.speaking.removeAllListeners('end');
+    }
+
+    // Clean up all user states including audio streams
+    for (const [userId] of this.userStates) {
+      this.clearUserState(userId);
     }
     this.userStates.clear();
 
@@ -131,114 +142,183 @@ export class VoiceListener extends EventEmitter {
 
   /**
    * Handle user starting to speak
+   * Key insight: Discord can fire rapid start/stop events for short pauses.
+   * We accumulate audio across these events until we get a proper silence.
    */
   private handleSpeakingStart(userId: string): void {
     if (!this.receiver || !this.isListening) return;
 
-    console.log(`[VoiceListener] User ${userId} started speaking`);
-    this.emit('listening', userId);
-
-    // Get or create user state
+    // Get existing state to check if we're already subscribed
     let state = this.userStates.get(userId);
-    if (!state) {
-      state = {
-        userId,
-        buffer: [],
-        lastAudioTime: Date.now(),
-        isRecording: true,
-      };
-      this.userStates.set(userId, state);
-    }
 
-    // Clear any pending silence timeout
-    if (state.silenceTimeout) {
+    // Clear any pending silence timeout since user is speaking again
+    if (state?.silenceTimeout) {
       clearTimeout(state.silenceTimeout);
       state.silenceTimeout = undefined;
     }
 
-    state.isRecording = true;
-    state.lastAudioTime = Date.now();
+    // If we already have an active stream for this user, just continue accumulating
+    if (state?.audioStream) {
+      state.isRecording = true;
+      state.lastAudioTime = Date.now();
+      console.log(`[VoiceListener] User ${userId} resumed speaking (continuing accumulation)`);
+      return;
+    }
 
-    // Subscribe to user's audio stream
-    const audioStream = this.receiver.subscribe(userId, {
+    console.log(`[VoiceListener] User ${userId} started speaking (new session)`);
+    this.emit('listening', userId);
+
+    // Create new state
+    state = {
+      userId,
+      buffer: [],
+      lastAudioTime: Date.now(),
+      isRecording: true,
+    };
+    this.userStates.set(userId, state);
+
+    // Subscribe to user's audio stream with Manual end behavior
+    // We'll handle the end logic ourselves based on silence timeouts
+    const opusStream = this.receiver.subscribe(userId, {
       end: {
-        behavior: EndBehaviorType.AfterSilence,
-        duration: SILENCE_THRESHOLD_MS,
+        behavior: EndBehaviorType.Manual,
       },
     });
 
-    // Collect audio data
-    audioStream.on('data', (chunk: Buffer) => {
-      if (!state) return;
+    // Increase max listeners to avoid warning
+    opusStream.setMaxListeners(20);
 
-      state.lastAudioTime = Date.now();
-      state.buffer.push(chunk);
+    // Create Opus decoder to convert Opus packets to PCM
+    // Discord sends 48kHz stereo Opus - decode to 48kHz stereo s16le PCM
+    const decoder = new prism.opus.Decoder({
+      rate: DISCORD_SAMPLE_RATE,
+      channels: 2,
+      frameSize: 960, // 20ms at 48kHz
+    });
+
+    // Store references for cleanup
+    state.audioStream = opusStream;
+    state.decoder = decoder;
+
+    // Track data events for debugging
+    let dataEventCount = 0;
+
+    // Important: Use the state reference from the map lookup each time
+    // to ensure we're writing to the current state, not a stale reference
+    decoder.on('data', (chunk: Buffer) => {
+      // Always look up the current state from the map
+      const currentState = this.userStates.get(userId);
+      if (!currentState || !currentState.isRecording) return;
+
+      dataEventCount++;
+      if (dataEventCount === 1) {
+        console.log(`[VoiceListener] First PCM chunk received for ${userId}, size: ${chunk.length} bytes`);
+      }
+
+      currentState.lastAudioTime = Date.now();
+      currentState.buffer.push(chunk);
 
       // Check if buffer is getting too large
-      const totalSize = state.buffer.reduce((sum, b) => sum + b.length, 0);
+      const totalSize = currentState.buffer.reduce((sum, b) => sum + b.length, 0);
       if (totalSize > (MAX_AUDIO_DURATION_MS / 1000) * DISCORD_SAMPLE_RATE * 2 * 2) {
         // Buffer too large, process what we have
-        this.processAudioBuffer(state);
+        console.log(`[VoiceListener] Buffer full for ${userId}, processing`);
+        this.processAudioBuffer(currentState);
       }
     });
 
-    audioStream.on('end', () => {
+    // Pipe opus stream to decoder
+    opusStream.pipe(decoder);
+
+    opusStream.on('end', () => {
       console.log(`[VoiceListener] Audio stream ended for user ${userId}`);
-      this.handleSpeakingEnd(userId);
+      // Clean up stream reference
+      const currentState = this.userStates.get(userId);
+      if (currentState) {
+        currentState.audioStream = undefined;
+      }
     });
 
-    audioStream.on('error', (error) => {
+    opusStream.on('error', (error) => {
       console.error(`[VoiceListener] Audio stream error for user ${userId}:`, error);
+      // Clean up on error
+      const currentState = this.userStates.get(userId);
+      if (currentState) {
+        currentState.audioStream?.destroy();
+        currentState.audioStream = undefined;
+      }
+      this.emit('error', error);
+    });
+
+    decoder.on('error', (error: Error) => {
+      console.error(`[VoiceListener] Opus decoder error for user ${userId}:`, error);
       this.emit('error', error);
     });
   }
 
   /**
    * Handle user stopping speaking
+   * We use a longer timeout to accumulate audio across short pauses
    */
   private handleSpeakingEnd(userId: string): void {
     const state = this.userStates.get(userId);
     if (!state || !state.isRecording) return;
 
-    console.log(`[VoiceListener] User ${userId} stopped speaking`);
-    this.emit('stopped', userId);
+    console.log(`[VoiceListener] User ${userId} stopped speaking, waiting for continuation...`);
 
-    // Set timeout to process audio after brief silence
+    // Don't emit 'stopped' yet - wait for the silence timeout
+    // This allows accumulation across short pauses
+
+    // Set timeout to process audio after extended silence
+    // Use SILENCE_THRESHOLD_MS for proper utterance detection
     state.silenceTimeout = setTimeout(() => {
+      console.log(`[VoiceListener] Silence timeout for ${userId}, processing audio`);
+      this.emit('stopped', userId);
       this.processAudioBuffer(state);
-    }, 200); // Small delay to ensure stream is fully closed
+    }, SILENCE_THRESHOLD_MS);
   }
 
   /**
    * Process collected audio buffer through Whisper
    */
   private async processAudioBuffer(state: UserAudioState): Promise<void> {
+    const userId = state.userId;
+    const bufferLength = state.buffer.length;
+
+    // Copy buffer data before clearing state - this allows new audio to accumulate
+    // while we process the previous utterance
+    const bufferCopy = bufferLength > 0 ? [...state.buffer] : [];
+
+    // Clear state FIRST to allow fresh audio accumulation
+    // This is critical - we need to release the audio stream so a new one can be created
+    this.clearUserState(userId);
+
+    console.log(`[VoiceListener] processAudioBuffer called for ${userId}, buffer chunks: ${bufferLength}`);
+
     if (!this.openai) {
       console.warn('[VoiceListener] OpenAI not initialized, skipping transcription');
-      this.clearUserState(state.userId);
       return;
     }
 
-    if (state.buffer.length === 0) {
-      this.clearUserState(state.userId);
+    if (bufferCopy.length === 0) {
+      console.log(`[VoiceListener] Empty buffer for ${userId}, skipping`);
       return;
     }
 
     // Calculate audio duration
-    const totalBytes = state.buffer.reduce((sum, b) => sum + b.length, 0);
+    const totalBytes = bufferCopy.reduce((sum, b) => sum + b.length, 0);
     const durationMs = (totalBytes / (DISCORD_SAMPLE_RATE * 2 * 2)) * 1000; // stereo, 16-bit
 
     if (durationMs < MIN_AUDIO_DURATION_MS) {
       console.log(`[VoiceListener] Audio too short (${durationMs}ms), skipping`);
-      this.clearUserState(state.userId);
       return;
     }
 
-    console.log(`[VoiceListener] Processing ${durationMs.toFixed(0)}ms of audio for user ${state.userId}`);
+    console.log(`[VoiceListener] Processing ${durationMs.toFixed(0)}ms of audio for user ${userId}`);
 
     try {
       // Combine buffers
-      const combinedBuffer = Buffer.concat(state.buffer);
+      const combinedBuffer = Buffer.concat(bufferCopy);
 
       // Convert to WAV format for Whisper
       const wavBuffer = this.pcmToWav(combinedBuffer);
@@ -261,22 +341,69 @@ export class VoiceListener extends EventEmitter {
       const text = transcription.trim().toLowerCase();
       console.log(`[VoiceListener] Transcription: "${text}"`);
 
+      // Detect hallucinations - Whisper outputs empty strings or repeats when there's silence
+      if (this.isHallucination(text)) {
+        console.log(`[VoiceListener] Detected hallucination, ignoring: "${text}"`);
+        return;
+      }
+
       // Emit transcription event
-      this.emit('transcription', state.userId, text);
+      this.emit('transcription', userId, text);
 
       // Check for wake word
       const wakeWordMatch = this.checkWakeWord(text);
       if (wakeWordMatch) {
         const command = text.slice(wakeWordMatch.length).trim();
         console.log(`[VoiceListener] Wake word detected! Command: "${command}"`);
-        this.emit('wakeWord', state.userId, command);
+        this.emit('wakeWord', userId, command);
       }
     } catch (error) {
       console.error('[VoiceListener] Transcription error:', error);
       this.emit('error', error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      this.clearUserState(state.userId);
     }
+    // Note: state was already cleared at start of this function
+  }
+
+  /**
+   * Detect Whisper hallucinations
+   * Whisper commonly outputs empty strings, repeated phrases, or prompt text when given silence
+   */
+  private isHallucination(text: string): boolean {
+    // Empty or very short transcriptions
+    if (!text || text.length < 3) {
+      return true;
+    }
+
+    // Common Whisper hallucination patterns
+    const hallucinationPatterns = [
+      /^\.+$/,                          // Just dots
+      /^[\s.,-]+$/,                     // Just punctuation
+      /^(thank you|thanks)\.?$/i,       // Common hallucination
+      /^you\.?$/i,                      // Common hallucination
+      /^(bye|goodbye)\.?$/i,            // Isolated goodbye (no wake word)
+      /^music$/i,                       // Common hallucination
+      /^silence$/i,                     // Describing silence
+      /^\[.*\]$/,                       // Bracketed descriptions like [MUSIC]
+      /^(um|uh|hmm)+$/i,                // Just filler words
+    ];
+
+    for (const pattern of hallucinationPatterns) {
+      if (pattern.test(text)) {
+        return true;
+      }
+    }
+
+    // Check for repeated phrases (another hallucination sign)
+    const words = text.split(/\s+/);
+    if (words.length >= 4) {
+      const firstHalf = words.slice(0, Math.floor(words.length / 2)).join(' ');
+      const secondHalf = words.slice(Math.floor(words.length / 2)).join(' ');
+      if (firstHalf === secondHalf) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -361,13 +488,25 @@ export class VoiceListener extends EventEmitter {
   }
 
   /**
-   * Clear user state
+   * Clear user state and clean up audio stream and decoder
    */
   private clearUserState(userId: string): void {
     const state = this.userStates.get(userId);
     if (state) {
       if (state.silenceTimeout) {
         clearTimeout(state.silenceTimeout);
+      }
+      // Clean up decoder first (it's piped from audioStream)
+      if (state.decoder) {
+        state.decoder.removeAllListeners();
+        state.decoder.destroy();
+        state.decoder = undefined;
+      }
+      // Clean up audio stream to prevent memory leaks
+      if (state.audioStream) {
+        state.audioStream.removeAllListeners();
+        state.audioStream.destroy();
+        state.audioStream = undefined;
       }
       state.buffer = [];
       state.isRecording = false;
