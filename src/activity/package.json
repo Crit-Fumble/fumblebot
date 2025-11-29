@@ -13,8 +13,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@crit-fumble/core": "^7.1.0",
-    "@crit-fumble/react": "^19.0.0",
+    "@crit-fumble/core": "^9.0.2",
+    "@crit-fumble/react": "^19.4.0",
     "@discord/embedded-app-sdk": "^2.4.0",
     "clsx": "^2.1.1",
     "react": "^19.0.0",

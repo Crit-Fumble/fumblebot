@@ -25,7 +25,6 @@ export type {
   GuildSettings,
   ChannelLinks,
   BotSettings,
-  FoundrySystem,
   Campaign,
   User,
   Character,
@@ -34,6 +33,15 @@ export type {
 } from '@crit-fumble/core';
 
 export { ADMINISTRATOR } from '@crit-fumble/core';
+
+// Local FoundrySystem type until added to @crit-fumble/core
+export interface FoundrySystem {
+  id: string;
+  title: string;
+  version?: string;
+  description?: string;
+  manifestUrl?: string;
+}
 
 // Local SDK state type (specific to this activity implementation)
 export interface DiscordSDKState {

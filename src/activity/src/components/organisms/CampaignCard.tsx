@@ -33,7 +33,7 @@ export function CampaignCard({ campaign, onClick, onLaunch, testId }: CampaignCa
         className="text-sm text-discord-primary inline-block px-2 py-0.5 bg-discord-background-tertiary rounded mb-2"
         data-testid={`${cardTestId}-system`}
       >
-        {campaign.systemTitle}
+        {campaign.systemTitle || 'Unknown System'}
       </div>
       <p
         className="text-sm text-discord-text-muted mb-3 line-clamp-2"
