@@ -27,3 +27,21 @@ export {
   handleDeleteSystem,
   handleSeedSystems,
 } from './systems.js';
+
+// Admin dashboard
+export {
+  handleGetGuildMetrics,
+  handleGetGuildSettings,
+  handleUpdateGuildSettings,
+  handleGetGuildActivity,
+} from './admin.js';
+
+// Prompt partials
+export {
+  handleListPromptPartials,
+  handleGetPromptPartial,
+  handleCreatePromptPartial,
+  handleUpdatePromptPartial,
+  handleDeletePromptPartial,
+  handleGetPromptsForContext,
+} from './prompts.js';

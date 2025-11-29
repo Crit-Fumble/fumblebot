@@ -2,24 +2,19 @@
  * Platform Server
  * Multi-platform server for FumbleBot
  *
- * Supports multiple client platforms:
- * - Discord: Activity SDK integration with OAuth2 and permission checking
- * - Web: Browser-based access via www.crit-fumble.com
- * - Mobile (iOS/Android): Responsive web with mobile optimizations
+ * This server handles:
+ * - Discord OAuth2 authentication and token exchange
+ * - API endpoints for commands, chat, systems, and sessions
+ * - Proxying to core server for React UI and activity content
  *
- * All platforms share the same underlying API and core functionality,
- * but serve platform-optimized UIs based on the detected context.
+ * All UI content is served from the core server via the proxy.
+ * This server adds Discord-specific headers (CSP for iframe embedding)
+ * and handles Discord Activity SDK token exchange.
  */
 
 import express, { type Request, type Response } from 'express';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { routes, printRouteTable } from './routes.js';
-import { setupAllMiddleware, requireAuth, requireAdmin } from './middleware.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { setupAllMiddleware, requireAdmin, requireGuildAdmin } from './middleware.js';
 import {
   handleTokenExchange,
   handleOAuthCallback,
@@ -35,6 +30,18 @@ import {
   handlePreviewSystem,
   handleDeleteSystem,
   handleSeedSystems,
+  // Admin dashboard
+  handleGetGuildMetrics,
+  handleGetGuildSettings,
+  handleUpdateGuildSettings,
+  handleGetGuildActivity,
+  // Prompt partials
+  handleListPromptPartials,
+  handleGetPromptPartial,
+  handleCreatePromptPartial,
+  handleUpdatePromptPartial,
+  handleDeletePromptPartial,
+  handleGetPromptsForContext,
 } from './controllers/index.js';
 import {
   handleExecuteCommand,
@@ -47,17 +54,22 @@ import {
   validateBotSecret,
 } from './controllers/chat.js';
 import {
+  handleAIChat,
+  handleAIComplete,
+  handleAILookup,
+  handleAIGenerateNPC,
+  handleAIGenerateDungeon,
+  handleAIGenerateEncounter,
+  handleAIDMResponse,
+  handleAICreatureBehavior,
+  handleAIGenerateImage,
+  handleAIHealth,
+  validateAISecret,
+} from './controllers/ai.js';
+import {
   chatRateLimiter,
   commandRateLimiter,
 } from './middleware/index.js';
-import {
-  getDiscordActivityHtml,
-  getCharacterSheetHtml,
-  getDiceRollerHtml,
-  getMapViewerHtml,
-  getInitiativeTrackerHtml,
-  getSpellLookupHtml,
-} from './views/index.js';
 import type { PlatformServerConfig } from './models/types.js';
 
 // Re-export types
@@ -77,24 +89,10 @@ export class PlatformServer {
 
   /**
    * Setup Express middleware
+   * All UI content is served from core via the proxy configured in middleware
    */
   private setupMiddleware(): void {
     setupAllMiddleware(this.app);
-
-    // Serve static files from React build output (dist/public)
-    const publicPath = path.join(__dirname, 'public');
-    if (fs.existsSync(publicPath)) {
-      this.app.use(express.static(publicPath, {
-        // Cache static assets for 1 year (they have content hashes)
-        maxAge: '1y',
-        // But not index.html
-        setHeaders: (res, filePath) => {
-          if (filePath.endsWith('index.html')) {
-            res.setHeader('Cache-Control', 'no-cache');
-          }
-        },
-      }));
-    }
   }
 
   /**
@@ -130,10 +128,41 @@ export class PlatformServer {
       }
     }
 
+    // Register admin dashboard routes with guild admin authentication
+    for (const route of routes.admin || []) {
+      const handler = this.getHandler(route.handler);
+      if (handler) {
+        this.app[route.method](route.path, requireGuildAdmin, handler);
+      }
+    }
+
+    // Register prompt partials routes with guild admin authentication
+    for (const route of routes.prompts || []) {
+      const handler = this.getHandler(route.handler);
+      if (handler) {
+        this.app[route.method](route.path, requireGuildAdmin, handler);
+      }
+    }
+
+    // Register AI API routes with AI secret authentication
+    // Health endpoint is public, all others require X-AI-Secret
+    for (const route of routes.ai || []) {
+      const handler = this.getHandler(route.handler);
+      if (handler) {
+        if (route.handler === 'handleAIHealth') {
+          // Health endpoint is public
+          this.app[route.method](route.path, handler);
+        } else {
+          // All other AI endpoints require secret
+          this.app[route.method](route.path, validateAISecret, handler);
+        }
+      }
+    }
+
     // Register all other routes from the routes definition
     for (const [category, categoryRoutes] of Object.entries(routes)) {
       // Skip already handled categories
-      if (category === 'chat' || category === 'commands' || category === 'systems') continue;
+      if (category === 'chat' || category === 'commands' || category === 'systems' || category === 'admin' || category === 'prompts' || category === 'ai') continue;
       for (const route of categoryRoutes) {
         const handler = this.getHandler(route.handler);
         if (handler) {
@@ -174,16 +203,6 @@ export class PlatformServer {
       handleGetUserGuilds: (req, res) => handleGetUserGuilds(req, res),
       handleGetUserActivities: (req, res) => handleGetUserActivities(req, res),
 
-      // Platform route - serves React app for both Discord and Web
-      handleRoot: (req, res) => this.serveReactApp(req, res),
-
-      // Activities
-      serveCharacterSheet: (req, res) => this.serveCharacterSheet(req, res),
-      serveDiceRoller: (req, res) => this.serveDiceRoller(req, res),
-      serveMapViewer: (req, res) => this.serveMapViewer(req, res),
-      serveInitiativeTracker: (req, res) => this.serveInitiativeTracker(req, res),
-      serveSpellLookup: (req, res) => this.serveSpellLookup(req, res),
-
       // Sessions
       handleSessionCreate: (req, res) => handleSessionCreate(req, res),
       handleSessionGet: (req, res) => handleSessionGet(req, res),
@@ -204,60 +223,35 @@ export class PlatformServer {
       // Chat API (website integration)
       handleChat: (req, res) => handleChat(req, res),
       handleChatHistory: (req, res) => handleChatHistory(req, res),
+
+      // Admin dashboard
+      handleGetGuildMetrics: (req, res) => handleGetGuildMetrics(req, res),
+      handleGetGuildSettings: (req, res) => handleGetGuildSettings(req, res),
+      handleUpdateGuildSettings: (req, res) => handleUpdateGuildSettings(req, res),
+      handleGetGuildActivity: (req, res) => handleGetGuildActivity(req, res),
+
+      // Prompt partials
+      handleListPromptPartials: (req, res) => handleListPromptPartials(req, res),
+      handleGetPromptPartial: (req, res) => handleGetPromptPartial(req, res),
+      handleCreatePromptPartial: (req, res) => handleCreatePromptPartial(req, res),
+      handleUpdatePromptPartial: (req, res) => handleUpdatePromptPartial(req, res),
+      handleDeletePromptPartial: (req, res) => handleDeletePromptPartial(req, res),
+      handleGetPromptsForContext: (req, res) => handleGetPromptsForContext(req, res),
+
+      // AI API
+      handleAIHealth: (req, res) => handleAIHealth(req, res),
+      handleAIChat: (req, res) => handleAIChat(req, res),
+      handleAIComplete: (req, res) => handleAIComplete(req, res),
+      handleAILookup: (req, res) => handleAILookup(req, res),
+      handleAIGenerateNPC: (req, res) => handleAIGenerateNPC(req, res),
+      handleAIGenerateDungeon: (req, res) => handleAIGenerateDungeon(req, res),
+      handleAIGenerateEncounter: (req, res) => handleAIGenerateEncounter(req, res),
+      handleAIDMResponse: (req, res) => handleAIDMResponse(req, res),
+      handleAICreatureBehavior: (req, res) => handleAICreatureBehavior(req, res),
+      handleAIGenerateImage: (req, res) => handleAIGenerateImage(req, res),
     };
 
     return handlers[name] || null;
-  }
-
-  /**
-   * Serve React app for all platforms
-   * Platform detection happens client-side in AuthContext
-   */
-  private serveReactApp(req: Request, res: Response): void {
-    const indexPath = path.join(__dirname, 'public', 'index.html');
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      // Fallback to legacy HTML if React app isn't built
-      const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '';
-      res.send(getDiscordActivityHtml(clientId));
-    }
-  }
-
-  /**
-   * Serve character sheet viewer
-   */
-  private serveCharacterSheet(req: Request, res: Response): void {
-    const characterId = req.params.characterId;
-    res.send(getCharacterSheetHtml(characterId));
-  }
-
-  /**
-   * Serve dice roller activity
-   */
-  private serveDiceRoller(req: Request, res: Response): void {
-    res.send(getDiceRollerHtml());
-  }
-
-  /**
-   * Serve map viewer activity
-   */
-  private serveMapViewer(req: Request, res: Response): void {
-    res.send(getMapViewerHtml());
-  }
-
-  /**
-   * Serve initiative tracker activity
-   */
-  private serveInitiativeTracker(req: Request, res: Response): void {
-    res.send(getInitiativeTrackerHtml());
-  }
-
-  /**
-   * Serve spell lookup activity
-   */
-  private serveSpellLookup(req: Request, res: Response): void {
-    res.send(getSpellLookupHtml());
   }
 
   /**

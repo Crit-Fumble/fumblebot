@@ -73,49 +73,11 @@ export const routes: Record<string, RouteDefinition[]> = {
     },
   ],
 
-  // Platform routes - React app with client-side platform detection
-  platforms: [
-    {
-      method: 'get',
-      path: '/',
-      handler: 'handleRoot',
-      description: 'Serve React app (Discord or Web based on context)',
-    },
-  ],
-
-  // Activity-specific features
-  activities: [
-    {
-      method: 'get',
-      path: '/discord/activity/character/:characterId',
-      handler: 'serveCharacterSheet',
-      description: 'Character sheet viewer',
-    },
-    {
-      method: 'get',
-      path: '/discord/activity/dice',
-      handler: 'serveDiceRoller',
-      description: 'Dice roller activity',
-    },
-    {
-      method: 'get',
-      path: '/discord/activity/map',
-      handler: 'serveMapViewer',
-      description: 'Map viewer activity',
-    },
-    {
-      method: 'get',
-      path: '/discord/activity/initiative',
-      handler: 'serveInitiativeTracker',
-      description: 'Initiative tracker activity',
-    },
-    {
-      method: 'get',
-      path: '/discord/activity/spells',
-      handler: 'serveSpellLookup',
-      description: 'Spell lookup activity',
-    },
-  ],
+  // Note: All UI routes (/, /activity/*, /discord/activity/*) are handled by core proxy
+  // configured in middleware.ts. The proxy forwards to core.crit-fumble.com for:
+  // - /api/core/* - Core API endpoints
+  // - /activity/* - React activity UI
+  // - /wiki/* - Wiki content
 
   // Session management API
   sessions: [
@@ -168,6 +130,138 @@ export const routes: Record<string, RouteDefinition[]> = {
       path: '/api/commands/:command',
       handler: 'handleExecuteCommand',
       description: 'Execute a specific command',
+    },
+  ],
+
+  // Admin Dashboard API (requires guild admin auth)
+  admin: [
+    {
+      method: 'get',
+      path: '/api/admin/guilds/:guildId/metrics',
+      handler: 'handleGetGuildMetrics',
+      description: 'Get server metrics and statistics',
+    },
+    {
+      method: 'get',
+      path: '/api/admin/guilds/:guildId/settings',
+      handler: 'handleGetGuildSettings',
+      description: 'Get guild settings',
+    },
+    {
+      method: 'post',
+      path: '/api/admin/guilds/:guildId/settings',
+      handler: 'handleUpdateGuildSettings',
+      description: 'Update guild settings',
+    },
+    {
+      method: 'get',
+      path: '/api/admin/guilds/:guildId/activity',
+      handler: 'handleGetGuildActivity',
+      description: 'Get recent activity timeline',
+    },
+  ],
+
+  // Prompt Partials API (channel/category/role-specific AI prompts)
+  prompts: [
+    {
+      method: 'get',
+      path: '/api/admin/guilds/:guildId/prompts',
+      handler: 'handleListPromptPartials',
+      description: 'List all prompt partials for a guild',
+    },
+    {
+      method: 'get',
+      path: '/api/admin/guilds/:guildId/prompts/for-context',
+      handler: 'handleGetPromptsForContext',
+      description: 'Get applicable prompts for a specific context',
+    },
+    {
+      method: 'get',
+      path: '/api/admin/guilds/:guildId/prompts/:id',
+      handler: 'handleGetPromptPartial',
+      description: 'Get a specific prompt partial',
+    },
+    {
+      method: 'post',
+      path: '/api/admin/guilds/:guildId/prompts',
+      handler: 'handleCreatePromptPartial',
+      description: 'Create a new prompt partial',
+    },
+    {
+      method: 'post',
+      path: '/api/admin/guilds/:guildId/prompts/:id',
+      handler: 'handleUpdatePromptPartial',
+      description: 'Update a prompt partial',
+    },
+    {
+      method: 'delete',
+      path: '/api/admin/guilds/:guildId/prompts/:id',
+      handler: 'handleDeletePromptPartial',
+      description: 'Delete a prompt partial',
+    },
+  ],
+
+  // AI API (for Core and external services)
+  ai: [
+    {
+      method: 'get',
+      path: '/api/ai/health',
+      handler: 'handleAIHealth',
+      description: 'Check AI service availability',
+    },
+    {
+      method: 'post',
+      path: '/api/ai/chat',
+      handler: 'handleAIChat',
+      description: 'General chat completion (Claude Sonnet)',
+    },
+    {
+      method: 'post',
+      path: '/api/ai/complete',
+      handler: 'handleAIComplete',
+      description: 'Low-level completion with provider choice',
+    },
+    {
+      method: 'post',
+      path: '/api/ai/lookup',
+      handler: 'handleAILookup',
+      description: 'Fast lookup (Claude Haiku) for rules/concepts',
+    },
+    {
+      method: 'post',
+      path: '/api/ai/dm',
+      handler: 'handleAIDMResponse',
+      description: 'Generate DM narration for a scenario',
+    },
+    {
+      method: 'post',
+      path: '/api/ai/creature-behavior',
+      handler: 'handleAICreatureBehavior',
+      description: 'Fast AI decision for creature/NPC behavior',
+    },
+    {
+      method: 'post',
+      path: '/api/ai/generate/npc',
+      handler: 'handleAIGenerateNPC',
+      description: 'Generate NPC description',
+    },
+    {
+      method: 'post',
+      path: '/api/ai/generate/dungeon',
+      handler: 'handleAIGenerateDungeon',
+      description: 'Generate dungeon with structured data (GPT-4o)',
+    },
+    {
+      method: 'post',
+      path: '/api/ai/generate/encounter',
+      handler: 'handleAIGenerateEncounter',
+      description: 'Generate encounter with structured data (GPT-4o)',
+    },
+    {
+      method: 'post',
+      path: '/api/ai/generate/image',
+      handler: 'handleAIGenerateImage',
+      description: 'Generate image (DALL-E 3)',
     },
   ],
 
