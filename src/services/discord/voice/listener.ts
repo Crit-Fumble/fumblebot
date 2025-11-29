@@ -489,27 +489,39 @@ export class VoiceListener extends EventEmitter {
 
   /**
    * Clear user state and clean up audio stream and decoder
+   *
+   * Important: Set references to undefined BEFORE destroying to prevent
+   * race conditions where handleSpeakingStart checks state.audioStream
+   * while the stream is being destroyed.
    */
   private clearUserState(userId: string): void {
     const state = this.userStates.get(userId);
     if (state) {
       if (state.silenceTimeout) {
         clearTimeout(state.silenceTimeout);
+        state.silenceTimeout = undefined;
       }
-      // Clean up decoder first (it's piped from audioStream)
-      if (state.decoder) {
-        state.decoder.removeAllListeners();
-        state.decoder.destroy();
-        state.decoder = undefined;
-      }
-      // Clean up audio stream to prevent memory leaks
-      if (state.audioStream) {
-        state.audioStream.removeAllListeners();
-        state.audioStream.destroy();
-        state.audioStream = undefined;
-      }
+
+      // Capture references before clearing
+      const decoder = state.decoder;
+      const audioStream = state.audioStream;
+
+      // Clear references FIRST to prevent race conditions
+      // This ensures handleSpeakingStart won't see stale references
+      state.decoder = undefined;
+      state.audioStream = undefined;
       state.buffer = [];
       state.isRecording = false;
+
+      // Now safely destroy the streams
+      if (decoder) {
+        decoder.removeAllListeners();
+        decoder.destroy();
+      }
+      if (audioStream) {
+        audioStream.removeAllListeners();
+        audioStream.destroy();
+      }
     }
     this.userStates.delete(userId);
   }
