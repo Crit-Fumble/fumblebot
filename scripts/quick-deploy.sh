@@ -49,10 +49,21 @@ fi
 echo -e "${GREEN}✓ Build complete${NC}"
 echo ""
 
-# Step 2: Create tarball of dist and prisma
+# Step 2: Create tarball of dist, prisma, and node_modules (production only)
 echo -e "${YELLOW}Step 2/5: Creating deployment package...${NC}"
-tar -czf /tmp/fumblebot-dist.tar.gz dist prisma package.json package-lock.json
-echo -e "${GREEN}✓ Package created${NC}"
+# Include node_modules to avoid memory-intensive npm install on small droplets
+# Use --exclude to skip devDependencies-only packages and build caches
+tar -czf /tmp/fumblebot-dist.tar.gz \
+    dist prisma package.json package-lock.json \
+    node_modules \
+    --exclude='node_modules/.cache' \
+    --exclude='node_modules/@types' \
+    --exclude='node_modules/typescript' \
+    --exclude='node_modules/vitest' \
+    --exclude='node_modules/@vitest' \
+    --exclude='node_modules/husky' \
+    --exclude='node_modules/prisma'
+echo -e "${GREEN}✓ Package created ($(du -h /tmp/fumblebot-dist.tar.gz | cut -f1))${NC}"
 echo ""
 
 # Step 3: Upload and extract on server
@@ -68,10 +79,9 @@ echo ""
 # Step 4: Extract and setup on server
 echo -e "${YELLOW}Step 4/5: Extracting and setting up...${NC}"
 ssh "$SERVER" "cd $REMOTE_DIR && \
-    rm -rf dist prisma && \
+    rm -rf dist prisma node_modules && \
     tar -xzf fumblebot-dist.tar.gz && \
     rm fumblebot-dist.tar.gz && \
-    npm ci --production 2>/dev/null || npm install --production && \
     npx prisma generate"
 if [ $? -ne 0 ]; then
     echo -e "${RED}Setup failed${NC}"
