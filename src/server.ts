@@ -12,6 +12,9 @@
  * and handles Discord Activity SDK token exchange.
  */
 
+// Load environment variables from .env file
+import 'dotenv/config';
+
 import express, { type Request, type Response } from 'express';
 import { routes, printRouteTable } from './routes.js';
 import { setupAllMiddleware, requireAdmin, requireGuildAdmin } from './middleware.js';
