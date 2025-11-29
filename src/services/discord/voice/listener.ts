@@ -20,8 +20,8 @@ import prism from 'prism-media';
 // Discord receiver provides raw Opus packets - we decode to 48kHz stereo 16-bit PCM
 const DISCORD_SAMPLE_RATE = 48000;
 const WHISPER_SAMPLE_RATE = 16000;
-const SILENCE_THRESHOLD_MS = 1500; // 1.5 seconds of silence = end of utterance
-const MIN_AUDIO_DURATION_MS = 500; // Minimum 0.5 second for short commands like "roll d20"
+const SILENCE_THRESHOLD_MS = 1000; // 1 second of silence = end of utterance (faster response)
+const MIN_AUDIO_DURATION_MS = 300; // Minimum 0.3 second for very short commands like "d20"
 const MAX_AUDIO_DURATION_MS = 10000; // Maximum audio buffer (10 seconds)
 
 // Default Whisper prompt to improve transcription accuracy
@@ -144,6 +144,11 @@ export class VoiceListener extends EventEmitter {
    * Handle user starting to speak
    * Key insight: Discord can fire rapid start/stop events for short pauses.
    * We accumulate audio across these events until we get a proper silence.
+   *
+   * Stream lifecycle: We create ONE stream per user and keep it alive for the
+   * entire voice session. Discord's receiver.subscribe() doesn't work properly
+   * on re-subscription after the first stream is destroyed, so we NEVER destroy
+   * the stream except on full cleanup (stopListening or user leaves).
    */
   private handleSpeakingStart(userId: string): void {
     if (!this.receiver || !this.isListening) return;
@@ -157,18 +162,26 @@ export class VoiceListener extends EventEmitter {
       state.silenceTimeout = undefined;
     }
 
-    // If we already have an active stream for this user, just continue accumulating
-    if (state?.audioStream) {
+    // If we already have an active stream and decoder for this user, just resume recording
+    // This is the normal case after processing - stream stays alive, just buffer was cleared
+    if (state?.audioStream && state?.decoder) {
       state.isRecording = true;
       state.lastAudioTime = Date.now();
-      console.log(`[VoiceListener] User ${userId} resumed speaking (continuing accumulation)`);
+      console.log(`[VoiceListener] User ${userId} resumed speaking (stream active, chunks will be captured)`);
       return;
     }
 
-    console.log(`[VoiceListener] User ${userId} started speaking (new session)`);
+    // If we have a state but stream is missing (shouldn't happen but handle it), clean up
+    if (state && (!state.audioStream || !state.decoder)) {
+      console.log(`[VoiceListener] User ${userId} has partial state, cleaning up before new stream`);
+      this.clearUserState(userId);
+      state = undefined;
+    }
+
+    console.log(`[VoiceListener] User ${userId} started speaking (creating new stream)`);
     this.emit('listening', userId);
 
-    // Create new state
+    // Create new state - this stream will persist for the entire session
     state = {
       userId,
       buffer: [],
@@ -178,7 +191,7 @@ export class VoiceListener extends EventEmitter {
     this.userStates.set(userId, state);
 
     // Subscribe to user's audio stream with Manual end behavior
-    // We'll handle the end logic ourselves based on silence timeouts
+    // This stream stays open until we explicitly destroy it or stopListening()
     const opusStream = this.receiver.subscribe(userId, {
       end: {
         behavior: EndBehaviorType.Manual,
@@ -201,18 +214,21 @@ export class VoiceListener extends EventEmitter {
     state.decoder = decoder;
 
     // Track data events for debugging
-    let dataEventCount = 0;
+    let chunkCount = 0;
 
     // Important: Use the state reference from the map lookup each time
     // to ensure we're writing to the current state, not a stale reference
     decoder.on('data', (chunk: Buffer) => {
       // Always look up the current state from the map
       const currentState = this.userStates.get(userId);
-      if (!currentState || !currentState.isRecording) return;
+      if (!currentState) return;
 
-      dataEventCount++;
-      if (dataEventCount === 1) {
-        console.log(`[VoiceListener] First PCM chunk received for ${userId}, size: ${chunk.length} bytes`);
+      // Only accumulate if we're actively recording
+      if (!currentState.isRecording) return;
+
+      chunkCount++;
+      if (chunkCount === 1) {
+        console.log(`[VoiceListener] First PCM chunk for ${userId}, size: ${chunk.length} bytes`);
       }
 
       currentState.lastAudioTime = Date.now();
@@ -221,7 +237,7 @@ export class VoiceListener extends EventEmitter {
       // Check if buffer is getting too large
       const totalSize = currentState.buffer.reduce((sum, b) => sum + b.length, 0);
       if (totalSize > (MAX_AUDIO_DURATION_MS / 1000) * DISCORD_SAMPLE_RATE * 2 * 2) {
-        // Buffer too large, process what we have
+        // Buffer too large, process what we have (but keep stream alive)
         console.log(`[VoiceListener] Buffer full for ${userId}, processing`);
         this.processAudioBuffer(currentState);
       }
@@ -232,21 +248,13 @@ export class VoiceListener extends EventEmitter {
 
     opusStream.on('end', () => {
       console.log(`[VoiceListener] Audio stream ended for user ${userId}`);
-      // Clean up stream reference
-      const currentState = this.userStates.get(userId);
-      if (currentState) {
-        currentState.audioStream = undefined;
-      }
+      // Stream ended externally - clean up state entirely
+      this.clearUserState(userId);
     });
 
     opusStream.on('error', (error) => {
       console.error(`[VoiceListener] Audio stream error for user ${userId}:`, error);
-      // Clean up on error
-      const currentState = this.userStates.get(userId);
-      if (currentState) {
-        currentState.audioStream?.destroy();
-        currentState.audioStream = undefined;
-      }
+      this.clearUserState(userId);
       this.emit('error', error);
     });
 
@@ -280,18 +288,25 @@ export class VoiceListener extends EventEmitter {
 
   /**
    * Process collected audio buffer through Whisper
+   * IMPORTANT: We keep the stream alive! Discord's receiver.subscribe() doesn't
+   * work properly on re-subscription after the first stream is destroyed.
+   * We only clear the buffer, not the stream.
    */
   private async processAudioBuffer(state: UserAudioState): Promise<void> {
     const userId = state.userId;
     const bufferLength = state.buffer.length;
 
-    // Copy buffer data before clearing state - this allows new audio to accumulate
-    // while we process the previous utterance
+    // Copy buffer data before clearing
     const bufferCopy = bufferLength > 0 ? [...state.buffer] : [];
 
-    // Clear state FIRST to allow fresh audio accumulation
-    // This is critical - we need to release the audio stream so a new one can be created
-    this.clearUserState(userId);
+    // IMPORTANT: Only clear the buffer, keep the stream alive!
+    // Discord's voice receiver doesn't properly re-subscribe after destroy
+    state.buffer = [];
+    state.isRecording = false;
+    if (state.silenceTimeout) {
+      clearTimeout(state.silenceTimeout);
+      state.silenceTimeout = undefined;
+    }
 
     console.log(`[VoiceListener] processAudioBuffer called for ${userId}, buffer chunks: ${bufferLength}`);
 
@@ -361,7 +376,7 @@ export class VoiceListener extends EventEmitter {
       console.error('[VoiceListener] Transcription error:', error);
       this.emit('error', error instanceof Error ? error : new Error(String(error)));
     }
-    // Note: state was already cleared at start of this function
+    // Stream remains alive - will continue capturing when user speaks again
   }
 
   /**
