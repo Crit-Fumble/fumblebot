@@ -24,12 +24,6 @@ import {
   handleGetUserActivities,
   handleSessionCreate,
   handleSessionGet,
-  handleListSystems,
-  handleGetSystem,
-  handleAddSystem,
-  handlePreviewSystem,
-  handleDeleteSystem,
-  handleSeedSystems,
   // Admin dashboard
   handleGetGuildMetrics,
   handleGetGuildSettings,
@@ -145,19 +139,6 @@ export class PlatformServer {
       }
     }
 
-    // Register systems routes with admin authentication for write operations
-    for (const route of routes.systems || []) {
-      const handler = this.getHandler(route.handler);
-      if (handler) {
-        // Require admin for POST, PUT, DELETE operations on systems
-        if (route.method !== 'get') {
-          this.app[route.method](route.path, requireAdmin, handler);
-        } else {
-          this.app[route.method](route.path, handler);
-        }
-      }
-    }
-
     // Register admin dashboard routes with guild admin authentication
     for (const route of routes.admin || []) {
       const handler = this.getHandler(route.handler);
@@ -192,7 +173,7 @@ export class PlatformServer {
     // Register all other routes from the routes definition
     for (const [category, categoryRoutes] of Object.entries(routes)) {
       // Skip already handled categories
-      if (category === 'chat' || category === 'commands' || category === 'systems' || category === 'admin' || category === 'prompts' || category === 'ai') continue;
+      if (category === 'chat' || category === 'commands' || category === 'admin' || category === 'prompts' || category === 'ai') continue;
       for (const route of categoryRoutes) {
         const handler = this.getHandler(route.handler);
         if (handler) {
@@ -236,14 +217,6 @@ export class PlatformServer {
       // Sessions
       handleSessionCreate: (req, res) => handleSessionCreate(req, res),
       handleSessionGet: (req, res) => handleSessionGet(req, res),
-
-      // Foundry Systems
-      handleListSystems: (req, res) => handleListSystems(req, res),
-      handleGetSystem: (req, res) => handleGetSystem(req, res),
-      handleAddSystem: (req, res) => handleAddSystem(req, res),
-      handlePreviewSystem: (req, res) => handlePreviewSystem(req, res),
-      handleDeleteSystem: (req, res) => handleDeleteSystem(req, res),
-      handleSeedSystems: (req, res) => handleSeedSystems(req, res),
 
       // Commands API
       handleListCommands: (req, res) => handleListCommands(req, res),

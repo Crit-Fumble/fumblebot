@@ -19,15 +19,6 @@ export {
 
 export { detectPlatform } from './detection.js';
 
-export {
-  handleListSystems,
-  handleGetSystem,
-  handleAddSystem,
-  handlePreviewSystem,
-  handleDeleteSystem,
-  handleSeedSystems,
-} from './systems.js';
-
 // Admin dashboard
 export {
   handleGetGuildMetrics,
