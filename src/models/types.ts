@@ -21,10 +21,17 @@ export interface DatabaseConfig {
 }
 
 export interface GradientConfig {
-  apiKey: string;
-  apiUrl?: string;
+  /** DigitalOcean access token (for API operations) */
+  accessToken?: string;
+  /** Inference API key (for serverless model access) */
+  inferenceKey: string;
+  /** Base URL for inference (default: https://inference.do-ai.run/v1) */
+  baseUrl?: string;
+  /** Enable LLM Auditor for fact-checking */
   enableLLMAuditor?: boolean;
+  /** Enable Guardrails for content moderation */
   enableGuardrails?: boolean;
+  /** Default model (e.g., 'llama-3.3-70b-instruct', 'mistral-nemo-instruct') */
   defaultModel?: string;
 }
 

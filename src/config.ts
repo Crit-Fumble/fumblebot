@@ -57,17 +57,18 @@ export function loadDatabaseConfig(): DatabaseConfig {
 }
 
 export function loadGradientConfig(): GradientConfig | undefined {
-  const apiKey = getEnvOptional('FUMBLEBOT_GRADIENT_API_KEY')
-  if (!apiKey) {
+  const inferenceKey = getEnvOptional('FUMBLEBOT_GRADIENT_INFERENCE_KEY')
+  if (!inferenceKey) {
     return undefined // Gradient is optional
   }
 
   return {
-    apiKey,
-    apiUrl: getEnvOptional('FUMBLEBOT_GRADIENT_API_URL', 'https://api.digitalocean.com/v2/gradient'),
+    inferenceKey,
+    accessToken: getEnvOptional('FUMBLEBOT_GRADIENT_ACCESS_TOKEN'),
+    baseUrl: getEnvOptional('FUMBLEBOT_GRADIENT_BASE_URL', 'https://inference.do-ai.run/v1'),
     enableLLMAuditor: getEnvOptional('FUMBLEBOT_GRADIENT_LLM_AUDITOR', 'false') === 'true',
     enableGuardrails: getEnvOptional('FUMBLEBOT_GRADIENT_GUARDRAILS', 'false') === 'true',
-    defaultModel: getEnvOptional('FUMBLEBOT_GRADIENT_MODEL', 'llama-3.1-8b'),
+    defaultModel: getEnvOptional('FUMBLEBOT_GRADIENT_MODEL', 'llama-3.3-70b-instruct'),
   }
 }
 

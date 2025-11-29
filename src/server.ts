@@ -65,13 +65,14 @@ import {
   commandRateLimiter,
 } from './middleware/index.js';
 import { AIService } from './services/ai/service.js';
+import { GradientService } from './services/ai/gradient.js';
 import type { PlatformServerConfig } from './models/types.js';
 
 // Re-export types
 export type { Platform, PlatformContext, PlatformServerConfig, ActivityServerConfig } from './models/types.js';
 
 /**
- * Initialize AI service with API keys from environment
+ * Initialize AI services with API keys from environment
  */
 function initializeAIService(): void {
   const ai = AIService.getInstance();
@@ -96,6 +97,18 @@ function initializeAIService(): void {
     });
   } else {
     console.warn('[Platform] FUMBLEBOT_OPENAI_API_KEY not set - OpenAI unavailable');
+  }
+
+  // Initialize DigitalOcean Gradient AI (Llama, Mistral, and partner models)
+  const gradientKey = process.env.FUMBLEBOT_GRADIENT_INFERENCE_KEY;
+  if (gradientKey) {
+    const gradient = GradientService.getInstance();
+    gradient.initialize({
+      inferenceKey: gradientKey,
+      defaultModel: process.env.FUMBLEBOT_GRADIENT_DEFAULT_MODEL || 'llama-3.3-70b-instruct',
+    });
+  } else {
+    console.warn('[Platform] FUMBLEBOT_GRADIENT_INFERENCE_KEY not set - Gradient AI unavailable');
   }
 }
 

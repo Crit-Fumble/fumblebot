@@ -10,6 +10,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { AIService } from '../services/ai/service.js';
+import { GradientService } from '../services/ai/gradient.js';
 import type {
   AIChatRequest,
   AIChatResponse,
@@ -532,13 +533,18 @@ export async function handleAIGenerateImage(req: Request, res: Response): Promis
  */
 export function handleAIHealth(req: Request, res: Response): void {
   const ai = getAIService();
+  const gradient = GradientService.getInstance();
 
   res.json({
     status: 'ok',
     providers: {
       anthropic: ai.isProviderAvailable('anthropic'),
       openai: ai.isProviderAvailable('openai'),
+      gradient: gradient.isAvailable(),
     },
+    gradient: gradient.isAvailable() ? {
+      defaultModel: gradient.getDefaultModel(),
+    } : undefined,
     timestamp: new Date().toISOString(),
   });
 }

@@ -4,10 +4,18 @@
  *
  * Three layers:
  * 1. AIService - Direct API calls to OpenAI/Anthropic
- * 2. ScriptedContent - Pre-generated content cached for reuse
+ * 2. GradientService - DigitalOcean Gradient AI (Llama, Claude via DO)
+ * 3. ScriptedContent - Pre-generated content cached for reuse
  */
 
 export { AIService } from './service.js'
+export {
+  GradientService,
+  gradient,
+  type GradientCompletionOptions,
+  type GradientCompletionResult,
+  type GradientModel,
+} from './gradient.js'
 export {
   ScriptedContent,
   type ScriptedBehavior,
