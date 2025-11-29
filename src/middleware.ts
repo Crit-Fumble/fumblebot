@@ -6,6 +6,7 @@
 import express, { type Application, type Request, type Response, type NextFunction } from 'express';
 import session from 'express-session';
 import cookieParser from 'cookie-parser';
+import { createProxyMiddleware, type Options as ProxyOptions } from 'http-proxy-middleware';
 import { setupCoreProxy, type CoreProxyConfig, type CoreUserInfo } from './middleware/proxy/index.js';
 import { setupContainerProxy, type ContainerProxyConfig } from './services/container/index.js';
 
@@ -439,6 +440,60 @@ export function setupContainerApiProxy(app: Application): void {
 }
 
 /**
+ * Setup activity proxy for Discord Activity
+ *
+ * Proxies activity static files from Discord Activity to Core.
+ * Discord loads activities from: fumblebot.crit-fumble.com/.proxy/activity/
+ * This proxy forwards those requests to Core's /activity/* routes.
+ *
+ * Path mapping:
+ * - /.proxy/activity/* → Core /activity/*
+ */
+export function setupActivityProxy(app: Application): void {
+  const coreBaseUrl = process.env.CORE_SERVER_URL || 'http://10.116.0.4';
+  const corePort = process.env.CORE_SERVER_PORT || '4000';
+  const coreUrl = `${coreBaseUrl}:${corePort}`;
+  const debug = process.env.NODE_ENV !== 'production';
+
+  console.log(`[Middleware] Setting up activity proxy /.proxy/activity/* -> ${coreUrl}/activity/*`);
+
+  const activityProxy = createProxyMiddleware({
+    target: coreUrl,
+    changeOrigin: true,
+    // Rewrite /.proxy/activity/* to /activity/*
+    pathRewrite: { '^/\\.proxy/activity': '/activity' },
+    // Logging
+    logger: debug ? console : undefined,
+    on: {
+      proxyReq: (proxyReq, req) => {
+        if (debug) {
+          console.log(`[ActivityProxy] ${req.method} ${req.url} -> ${coreUrl}${req.url?.replace(/^\/\.proxy\/activity/, '/activity')}`);
+        }
+        // Forward original host
+        proxyReq.setHeader('X-Forwarded-Host', req.headers.host || '');
+        proxyReq.setHeader('X-Forwarded-Proto', 'https');
+      },
+      proxyRes: (proxyRes, req) => {
+        if (debug) {
+          console.log(`[ActivityProxy] Response: ${proxyRes.statusCode} ${req.url}`);
+        }
+      },
+      error: (err, req, res) => {
+        console.error(`[ActivityProxy] Error:`, err.message);
+        if (res && 'status' in res) {
+          (res as Response).status(502).json({
+            error: 'Activity server unavailable',
+            message: 'Failed to reach Core activity server',
+          });
+        }
+      },
+    },
+  });
+
+  app.use('/.proxy/activity', activityProxy);
+}
+
+/**
  * Setup all middleware
  */
 export function setupAllMiddleware(app: Application): void {
@@ -454,4 +509,8 @@ export function setupAllMiddleware(app: Application): void {
   // Setup container proxy for Discord Activity (/.proxy/api/container/*)
   // This proxies container management requests to Core via DO private network
   setupContainerApiProxy(app);
+
+  // Setup activity proxy for Discord Activity (/.proxy/activity/*)
+  // This proxies the React activity UI from Core
+  setupActivityProxy(app);
 }
