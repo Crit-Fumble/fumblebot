@@ -11,6 +11,7 @@
 export { VoiceClient, voiceClient } from './client.js';
 export { VoiceListener, voiceListener } from './listener.js';
 export { DeepgramListener, deepgramListener } from './deepgram-listener.js';
+export { DeepgramTTS, deepgramTTS, type DeepgramVoice } from './deepgram-tts.js';
 export {
   VoiceAssistant,
   voiceAssistant,

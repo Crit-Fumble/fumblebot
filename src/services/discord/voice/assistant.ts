@@ -20,6 +20,7 @@ import type { VoiceBasedChannel, GuildMember, TextChannel, Client, VoiceState } 
 import { voiceClient, VoiceClient } from './client.js';
 import { voiceListener, VoiceListener } from './listener.js';
 import { deepgramListener, DeepgramListener } from './deepgram-listener.js';
+import { deepgramTTS, DeepgramTTS, type DeepgramVoice } from './deepgram-tts.js';
 import { getPromptsForContext } from '../../../controllers/prompts.js';
 import { AIService } from '../../ai/service.js';
 import OpenAI from 'openai';
@@ -96,6 +97,10 @@ export interface VoiceAssistantConfig {
   subtitleDebounceMs: number;
   /** Transcription provider: 'deepgram' (preferred) or 'whisper' (fallback) */
   transcriptionProvider: 'deepgram' | 'whisper' | 'auto';
+  /** TTS provider: 'deepgram' (faster) or 'openai' (more expressive) */
+  ttsProvider: 'deepgram' | 'openai' | 'auto';
+  /** Deepgram voice to use (if using Deepgram TTS) */
+  deepgramVoice: DeepgramVoice;
 }
 
 export interface VoiceCommand {
@@ -113,6 +118,8 @@ const DEFAULT_CONFIG: VoiceAssistantConfig = {
   subtitleMaxLines: 8, // Show last 8 lines
   subtitleDebounceMs: 500, // Update at most every 500ms
   transcriptionProvider: 'auto', // Auto-select best available (Deepgram preferred)
+  ttsProvider: 'auto', // Auto-select best available (Deepgram preferred for speed)
+  deepgramVoice: 'aura-orion-en', // Male narrator voice for TTRPG
 };
 
 interface GuildVoiceState {
@@ -132,6 +139,8 @@ interface GuildVoiceState {
   subtitleTimer?: NodeJS.Timeout;
   /** Which transcription provider is being used */
   transcriptionProvider: 'deepgram' | 'whisper';
+  /** Which TTS provider is being used */
+  ttsProvider: 'deepgram' | 'openai';
 }
 
 // Default whisper prompt for wake word detection
@@ -958,8 +967,15 @@ Question: ${request}`,
    * This helps users know the bot is ready and also "primes" the audio system
    */
   private async playReadySound(guildId: string): Promise<void> {
-    if (!this.openai) {
-      console.log('[VoiceAssistant] No OpenAI client, skipping ready sound');
+    const state = this.activeGuilds.get(guildId);
+    const ttsProvider = state?.ttsProvider ?? 'openai';
+
+    // Check if any TTS provider is available
+    const hasDeepgram = deepgramTTS.isAvailable;
+    const hasOpenAI = this.openai !== null;
+
+    if (!hasDeepgram && !hasOpenAI) {
+      console.log('[VoiceAssistant] No TTS provider available, skipping ready sound');
       return;
     }
 
@@ -975,16 +991,27 @@ Question: ${request}`,
       // Add a small delay to ensure audio player is initialized
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      console.log('[VoiceAssistant] Generating ready sound...');
-      const response = await this.openai.audio.speech.create({
-        model: 'tts-1',
-        voice: 'fable', // Expressive, dramatic voice for TTRPG
-        input: 'Ready!',
-        speed: 0.9, // Slightly slower for dramatic effect
-      });
+      console.log(`[VoiceAssistant] Generating ready sound (${ttsProvider})...`);
 
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      let buffer: Buffer;
+
+      if (ttsProvider === 'deepgram' && hasDeepgram) {
+        buffer = await deepgramTTS.synthesize('Ready!', {
+          voice: this.config.deepgramVoice,
+        });
+      } else if (hasOpenAI && this.openai) {
+        const response = await this.openai.audio.speech.create({
+          model: 'tts-1',
+          voice: 'fable',
+          input: 'Ready!',
+          speed: 0.9,
+        });
+        const arrayBuffer = await response.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+      } else {
+        console.warn('[VoiceAssistant] No TTS available for ready sound');
+        return;
+      }
 
       await voiceClient.playBuffer(guildId, buffer);
       console.log('[VoiceAssistant] Ready sound played');
@@ -1066,7 +1093,16 @@ Question: ${request}`,
       transcriptionProvider = deepgramListener.isAvailable ? 'deepgram' : 'whisper';
     }
 
-    console.log(`[VoiceAssistant] Using transcription provider: ${transcriptionProvider}`);
+    // Determine which TTS provider to use
+    let ttsProvider: 'deepgram' | 'openai' = 'openai';
+    if (this.config.ttsProvider === 'deepgram') {
+      ttsProvider = 'deepgram';
+    } else if (this.config.ttsProvider === 'auto') {
+      // Auto-select: prefer Deepgram for speed if available
+      ttsProvider = deepgramTTS.isAvailable ? 'deepgram' : 'openai';
+    }
+
+    console.log(`[VoiceAssistant] Using transcription: ${transcriptionProvider}, TTS: ${ttsProvider}`);
 
     // Track this guild
     this.activeGuilds.set(guildId, {
@@ -1080,6 +1116,7 @@ Question: ${request}`,
       transcript,
       subtitles,
       transcriptionProvider,
+      ttsProvider,
     });
 
     // Only start listening if there are humans present
@@ -1095,7 +1132,7 @@ Question: ${request}`,
       await this.playReadySound(guildId);
     }
 
-    this.emit('started', { guildId, channelId: channel.id, paused: shouldPause, transcriptionProvider });
+    this.emit('started', { guildId, channelId: channel.id, paused: shouldPause, transcriptionProvider, ttsProvider });
   }
 
   /**
@@ -1436,29 +1473,44 @@ ${transcriptText.slice(0, 2000)}`,
   /**
    * Synthesize and play TTS response
    * Also adds FumbleBot's response to the session transcript
+   * Uses Deepgram Aura (faster) or OpenAI TTS based on config/availability
    */
   private async speakResponse(guildId: string, text: string): Promise<void> {
-    if (!this.openai) {
-      console.warn('[VoiceAssistant] OpenAI not available for TTS');
-      return;
-    }
+    const state = this.activeGuilds.get(guildId);
+    const ttsProvider = state?.ttsProvider ?? 'openai';
 
     try {
       // Ensure voice is ready before speaking
       await voiceClient.waitForReady(guildId, 3000);
 
-      console.log(`[VoiceAssistant] Generating TTS for: "${text}"`);
+      const startTime = Date.now();
+      console.log(`[VoiceAssistant] Generating TTS (${ttsProvider}) for: "${text}"`);
 
-      const response = await this.openai.audio.speech.create({
-        model: 'tts-1',
-        voice: 'fable', // Expressive, dramatic voice for TTRPG - Options: alloy, echo, fable, onyx, nova, shimmer
-        input: text,
-        speed: 0.9, // Slightly slower for dramatic effect
-      });
+      let buffer: Buffer;
 
-      // Get audio buffer
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      if (ttsProvider === 'deepgram' && deepgramTTS.isAvailable) {
+        // Use Deepgram Aura TTS (faster, lower latency)
+        buffer = await deepgramTTS.synthesize(text, {
+          voice: this.config.deepgramVoice,
+        });
+      } else if (this.openai) {
+        // Use OpenAI TTS (fallback, more expressive)
+        const response = await this.openai.audio.speech.create({
+          model: 'tts-1',
+          voice: 'fable', // Expressive, dramatic voice for TTRPG
+          input: text,
+          speed: 0.9, // Slightly slower for dramatic effect
+        });
+
+        const arrayBuffer = await response.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+      } else {
+        console.warn('[VoiceAssistant] No TTS provider available');
+        return;
+      }
+
+      const ttsLatency = Date.now() - startTime;
+      console.log(`[VoiceAssistant] TTS generated in ${ttsLatency}ms (${buffer.length} bytes)`);
 
       // Play audio
       await voiceClient.playBuffer(guildId, buffer);
