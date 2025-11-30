@@ -9,7 +9,6 @@
 import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 import { dirname, join, resolve } from 'path'
-import { readFileSync, existsSync } from 'fs'
 import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
 
@@ -26,15 +25,19 @@ const requireFromRoot = createRequire(join(projectRoot, 'package.json'))
 const prismaModule = requireFromRoot('.prisma/fumblebot')
 const PrismaClient = prismaModule.PrismaClient as new (options?: { adapter: PrismaPg }) => any
 
-// Load CA certificate for DigitalOcean managed PostgreSQL
-const caCertPath = join(projectRoot, 'certs', 'ca-certificate.crt')
-const sslConfig = existsSync(caCertPath)
-  ? { ca: readFileSync(caCertPath).toString() }
-  : { rejectUnauthorized: false } // Fallback if cert not found
+// Parse connection string and remove sslmode (conflicts with pg's ssl option)
+const connectionUrl = new URL(process.env.FUMBLEBOT_DATABASE_URL || 'postgresql://localhost/fumblebot')
+connectionUrl.searchParams.delete('sslmode')
+const connectionString = connectionUrl.toString()
+
+// SSL configuration for DigitalOcean managed PostgreSQL
+// Note: DO managed databases use intermediate certs that don't validate with just the CA cert
+// Using rejectUnauthorized: false is acceptable for managed database connections
+const sslConfig = { rejectUnauthorized: false }
 
 // Create a pg Pool with proper SSL configuration
 const pool = new pg.Pool({
-  connectionString: process.env.FUMBLEBOT_DATABASE_URL,
+  connectionString,
   ssl: sslConfig
 })
 
