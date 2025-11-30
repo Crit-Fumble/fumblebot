@@ -9,6 +9,7 @@
 import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 import { dirname, join, resolve } from 'path'
+import { readFileSync, existsSync } from 'fs'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 // Get the directory of the current module
@@ -24,8 +25,17 @@ const requireFromRoot = createRequire(join(projectRoot, 'package.json'))
 const prismaModule = requireFromRoot('.prisma/fumblebot')
 const PrismaClient = prismaModule.PrismaClient as new (options?: { adapter: PrismaPg }) => any
 
+// Load CA certificate for DigitalOcean managed PostgreSQL
+const caCertPath = join(projectRoot, 'certs', 'ca-certificate.crt')
+const sslOptions = existsSync(caCertPath)
+  ? { ca: readFileSync(caCertPath).toString() }
+  : { rejectUnauthorized: false } // Fallback if cert not found
+
 // Create the PostgreSQL adapter with the connection string from env
-const adapter = new PrismaPg({ connectionString: process.env.FUMBLEBOT_DATABASE_URL })
+const adapter = new PrismaPg({
+  connectionString: process.env.FUMBLEBOT_DATABASE_URL,
+  options: { ssl: sslOptions }
+})
 
 // Type the global for hot reloading in development
 const globalForPrisma = globalThis as unknown as { prisma: InstanceType<typeof PrismaClient> | undefined }
