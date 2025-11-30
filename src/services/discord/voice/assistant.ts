@@ -160,14 +160,17 @@ export class VoiceAssistant extends EventEmitter {
    * Handles common commands like dice rolls and goodbye
    */
   private detectFastIntent(textLower: string): IntentResult | null {
-    // Check for goodbye/exit commands
-    if (
-      textLower === 'goodbye' ||
-      textLower === 'bye' ||
-      textLower === 'goodbye fumblebot' ||
-      textLower === 'bye fumblebot' ||
-      textLower.includes('stop listening')
-    ) {
+    // Check for goodbye/exit commands - require explicit wake word or "stop listening"
+    // Isolated "goodbye" or "bye" are likely Whisper hallucinations
+    const hasFumblebotGoodbye =
+      textLower.includes('goodbye fumblebot') ||
+      textLower.includes('bye fumblebot') ||
+      textLower.includes('fumblebot goodbye') ||
+      textLower.includes('fumblebot bye') ||
+      textLower.includes('fumblebot stop') ||
+      textLower.includes('stop listening');
+
+    if (hasFumblebotGoodbye) {
       return {
         shouldRespond: true,
         reason: 'wake_word',
@@ -1289,14 +1292,15 @@ ${transcriptText.slice(0, 2000)}`,
     const normalized = text.toLowerCase().trim();
 
     // Built-in commands
-    // Only exit on explicit stop commands - "goodbye" must be the primary intent, not part of other text
+    // Require explicit wake word for exit to avoid Whisper hallucination false positives
+    // Isolated "goodbye" or "bye" are common Whisper hallucinations
     const isExitCommand =
-      normalized === 'goodbye' ||
-      normalized === 'bye' ||
+      normalized.includes('goodbye fumblebot') ||
+      normalized.includes('bye fumblebot') ||
+      normalized.includes('fumblebot goodbye') ||
+      normalized.includes('fumblebot bye') ||
+      normalized.includes('fumblebot stop') ||
       normalized === 'stop listening' ||
-      normalized === 'stop' ||
-      normalized.startsWith('goodbye fumblebot') ||
-      normalized.startsWith('bye fumblebot') ||
       normalized.includes('stop listening');
 
     if (isExitCommand) {
@@ -1348,6 +1352,7 @@ ${transcriptText.slice(0, 2000)}`,
 
   /**
    * Synthesize and play TTS response
+   * Also adds FumbleBot's response to the session transcript
    */
   private async speakResponse(guildId: string, text: string): Promise<void> {
     if (!this.openai) {
@@ -1375,10 +1380,40 @@ ${transcriptText.slice(0, 2000)}`,
       // Play audio
       await voiceClient.playBuffer(guildId, buffer);
 
+      // Add FumbleBot's response to the transcript
+      await this.addBotResponseToTranscript(guildId, text);
+
       console.log('[VoiceAssistant] TTS playback complete');
     } catch (error) {
       console.error('[VoiceAssistant] TTS error:', error);
       this.emit('error', error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  /**
+   * Add FumbleBot's response to the session transcript
+   */
+  private async addBotResponseToTranscript(guildId: string, text: string): Promise<void> {
+    const state = this.activeGuilds.get(guildId);
+    if (!state) return;
+
+    const botId = state.botId || 'fumblebot';
+    const botName = 'FumbleBot';
+
+    // Add entry to transcript
+    state.transcript.entries.push({
+      userId: botId,
+      username: botName,
+      text,
+      timestamp: Date.now(),
+      isCommand: false,
+    });
+
+    console.log(`[VoiceAssistant] Added bot response to transcript: "${text}"`);
+
+    // Update live subtitles with bot response
+    if (this.config.liveSubtitlesEnabled) {
+      await this.updateLiveSubtitles(guildId, botName, text, false);
     }
   }
 

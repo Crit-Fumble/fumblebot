@@ -396,10 +396,21 @@ export class VoiceListener extends EventEmitter {
       /^(thank you|thanks)\.?$/i,       // Common hallucination
       /^you\.?$/i,                      // Common hallucination
       /^(bye|goodbye)\.?$/i,            // Isolated goodbye (no wake word)
+      /^goodbye\.? goodbye\.?$/i,       // Repeated goodbye
+      /^bye\.? bye\.?$/i,               // Repeated bye
+      /^(see you|later|see you later)\.?$/i, // Farewell hallucinations
       /^music$/i,                       // Common hallucination
       /^silence$/i,                     // Describing silence
       /^\[.*\]$/,                       // Bracketed descriptions like [MUSIC]
       /^(um|uh|hmm)+$/i,                // Just filler words
+      /^(okay|ok)\.?$/i,                // Just "okay"
+      /^yes\.?$/i,                      // Just "yes"
+      /^no\.?$/i,                       // Just "no"
+      /^(so|and|but|the)\.?$/i,         // Just conjunctions/articles
+      /^i'm sorry\.?$/i,                // Common hallucination
+      /^sorry\.?$/i,                    // Common hallucination
+      /^(hello|hi)\.?$/i,               // Isolated greeting (no wake word)
+      /^(right|yeah|yep|nope)\.?$/i,    // Common filler words
     ];
 
     for (const pattern of hallucinationPatterns) {
@@ -416,6 +427,12 @@ export class VoiceListener extends EventEmitter {
       if (firstHalf === secondHalf) {
         return true;
       }
+    }
+
+    // Check for very short transcriptions that aren't dice commands
+    // Dice commands like "d20" or "2d6" should pass through
+    if (text.length < 5 && !/\d+?d\d+/i.test(text)) {
+      return true;
     }
 
     return false;
