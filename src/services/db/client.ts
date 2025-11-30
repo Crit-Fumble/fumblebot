@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join, resolve } from 'path'
 import { readFileSync, existsSync } from 'fs'
 import { PrismaPg } from '@prisma/adapter-pg'
+import pg from 'pg'
 
 // Get the directory of the current module
 const __filename = fileURLToPath(import.meta.url)
@@ -27,15 +28,18 @@ const PrismaClient = prismaModule.PrismaClient as new (options?: { adapter: Pris
 
 // Load CA certificate for DigitalOcean managed PostgreSQL
 const caCertPath = join(projectRoot, 'certs', 'ca-certificate.crt')
-const sslOptions = existsSync(caCertPath)
+const sslConfig = existsSync(caCertPath)
   ? { ca: readFileSync(caCertPath).toString() }
   : { rejectUnauthorized: false } // Fallback if cert not found
 
-// Create the PostgreSQL adapter with the connection string from env
-const adapter = new PrismaPg({
+// Create a pg Pool with proper SSL configuration
+const pool = new pg.Pool({
   connectionString: process.env.FUMBLEBOT_DATABASE_URL,
-  options: { ssl: sslOptions }
+  ssl: sslConfig
 })
+
+// Create the PostgreSQL adapter using the pool
+const adapter = new PrismaPg({ pool })
 
 // Type the global for hot reloading in development
 const globalForPrisma = globalThis as unknown as { prisma: InstanceType<typeof PrismaClient> | undefined }
