@@ -19,6 +19,7 @@ import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import type { VoiceBasedChannel, GuildMember, TextChannel, Client, VoiceState } from 'discord.js';
 import { voiceClient, VoiceClient } from './client.js';
 import { voiceListener, VoiceListener } from './listener.js';
+import { deepgramListener, DeepgramListener } from './deepgram-listener.js';
 import { getPromptsForContext } from '../../../controllers/prompts.js';
 import { AIService } from '../../ai/service.js';
 import OpenAI from 'openai';
@@ -93,6 +94,8 @@ export interface VoiceAssistantConfig {
   subtitleMaxLines: number;
   /** Subtitle update debounce (ms) */
   subtitleDebounceMs: number;
+  /** Transcription provider: 'deepgram' (preferred) or 'whisper' (fallback) */
+  transcriptionProvider: 'deepgram' | 'whisper' | 'auto';
 }
 
 export interface VoiceCommand {
@@ -109,6 +112,7 @@ const DEFAULT_CONFIG: VoiceAssistantConfig = {
   liveSubtitlesEnabled: true, // Real-time scrolling subtitles
   subtitleMaxLines: 8, // Show last 8 lines
   subtitleDebounceMs: 500, // Update at most every 500ms
+  transcriptionProvider: 'auto', // Auto-select best available (Deepgram preferred)
 };
 
 interface GuildVoiceState {
@@ -126,6 +130,8 @@ interface GuildVoiceState {
   subtitles: SubtitleState;
   /** Subtitle update debounce timer */
   subtitleTimer?: NodeJS.Timeout;
+  /** Which transcription provider is being used */
+  transcriptionProvider: 'deepgram' | 'whisper';
 }
 
 // Default whisper prompt for wake word detection
@@ -571,7 +577,11 @@ Provide a concise answer (1-3 sentences). If asking about a name/NPC/item, give 
     if (humanCount === 0 && !state.isPaused) {
       // No humans in channel, pause listening
       console.log('[VoiceAssistant] No humans in channel, pausing listener');
-      voiceListener.stopListening();
+      if (state.transcriptionProvider === 'deepgram') {
+        deepgramListener.stopListening();
+      } else {
+        voiceListener.stopListening();
+      }
       state.isPaused = true;
       this.emit('paused', { guildId, reason: 'no_humans' });
     } else if (humanCount > 0 && state.isPaused) {
@@ -579,7 +589,11 @@ Provide a concise answer (1-3 sentences). If asking about a name/NPC/item, give 
       console.log('[VoiceAssistant] Humans returned to channel, resuming listener');
       const connection = voiceClient.getConnection(guildId);
       if (connection) {
-        voiceListener.startListening(connection, guildId, state.whisperPrompt);
+        if (state.transcriptionProvider === 'deepgram') {
+          deepgramListener.startListening(connection, guildId);
+        } else {
+          voiceListener.startListening(connection, guildId, state.whisperPrompt);
+        }
         state.isPaused = false;
         this.emit('resumed', { guildId, humanCount });
       }
@@ -587,60 +601,108 @@ Provide a concise answer (1-3 sentences). If asking about a name/NPC/item, give 
   };
 
   private setupListeners(): void {
-    // Handle wake word detection (legacy path - still useful for simple cases)
+    // ==========================================
+    // Whisper-based listener (fallback)
+    // ==========================================
     voiceListener.on('wakeWord', async (userId: string, command: string) => {
       const guildId = voiceListener.currentGuildId;
-      const channelId = voiceClient.getCurrentChannel(guildId);
-
-      if (!channelId) {
-        console.warn('[VoiceAssistant] Wake word detected but no channel found');
-        return;
-      }
-
-      const voiceCommand: VoiceCommand = {
-        userId,
-        guildId,
-        channelId,
-        command,
-        timestamp: Date.now(),
-      };
-
-      this.commandHistory.push(voiceCommand);
-      this.emit('command', voiceCommand);
-
-      console.log(`[VoiceAssistant] Processing wake word command from ${userId}: "${command}"`);
-
-      // Add to transcript as a command
-      await this.addTranscriptionEntry(guildId, userId, `Hey FumbleBot, ${command}`, true);
-
-      // Process the command
-      await this.processCommand(voiceCommand);
+      await this.handleWakeWord(guildId, userId, command, 'whisper');
     });
 
-    // Transcriptions are recorded for the final transcript only
-    // We do NOT process every utterance through intent detection
-    // FumbleBot only responds to explicit wake word commands via the 'wakeWord' event
     voiceListener.on('transcription', async (userId: string, text: string) => {
       const guildId = voiceListener.currentGuildId;
-
-      if (this.config.logTranscriptions) {
-        console.log(`[VoiceAssistant] Transcription from ${userId}: "${text}"`);
-        this.emit('transcription', { userId, text, timestamp: Date.now() });
-      }
-
-      // Add to transcript for final session summary (but don't process for intent)
-      await this.addTranscriptionEntry(guildId, userId, text, false);
-
-      // Note: Intent detection is disabled for general transcriptions
-      // FumbleBot only responds when explicitly addressed via wake word
-      // This prevents interrupting normal player conversation
+      await this.handleTranscription(guildId, userId, text, 'whisper');
     });
 
-    // Handle errors
     voiceListener.on('error', (error: Error) => {
-      console.error('[VoiceAssistant] Listener error:', error);
+      console.error('[VoiceAssistant] Whisper listener error:', error);
       this.emit('error', error);
     });
+
+    // ==========================================
+    // Deepgram-based listener (preferred)
+    // ==========================================
+    deepgramListener.on('wakeWord', async (userId: string, command: string) => {
+      const guildId = deepgramListener.currentGuildId;
+      await this.handleWakeWord(guildId, userId, command, 'deepgram');
+    });
+
+    deepgramListener.on('transcription', async (userId: string, text: string) => {
+      const guildId = deepgramListener.currentGuildId;
+      await this.handleTranscription(guildId, userId, text, 'deepgram');
+    });
+
+    // Deepgram interim results - for real-time UI updates
+    deepgramListener.on('interimTranscription', async (userId: string, text: string) => {
+      // We could use this for real-time subtitle updates if desired
+      // For now, just log it
+      if (this.config.logTranscriptions) {
+        console.log(`[VoiceAssistant] Interim from ${userId}: "${text}"`);
+      }
+    });
+
+    deepgramListener.on('error', (error: Error) => {
+      console.error('[VoiceAssistant] Deepgram listener error:', error);
+      this.emit('error', error);
+    });
+  }
+
+  /**
+   * Handle wake word detection from either listener
+   */
+  private async handleWakeWord(
+    guildId: string,
+    userId: string,
+    command: string,
+    source: 'deepgram' | 'whisper'
+  ): Promise<void> {
+    const channelId = voiceClient.getCurrentChannel(guildId);
+
+    if (!channelId) {
+      console.warn(`[VoiceAssistant] Wake word detected (${source}) but no channel found`);
+      return;
+    }
+
+    const voiceCommand: VoiceCommand = {
+      userId,
+      guildId,
+      channelId,
+      command,
+      timestamp: Date.now(),
+    };
+
+    this.commandHistory.push(voiceCommand);
+    this.emit('command', voiceCommand);
+
+    console.log(`[VoiceAssistant] Processing wake word command from ${userId} (${source}): "${command}"`);
+
+    // Add to transcript as a command
+    await this.addTranscriptionEntry(guildId, userId, `Hey FumbleBot, ${command}`, true);
+
+    // Process the command
+    await this.processCommand(voiceCommand);
+  }
+
+  /**
+   * Handle transcription from either listener
+   */
+  private async handleTranscription(
+    guildId: string,
+    userId: string,
+    text: string,
+    source: 'deepgram' | 'whisper'
+  ): Promise<void> {
+    if (this.config.logTranscriptions) {
+      console.log(`[VoiceAssistant] Transcription from ${userId} (${source}): "${text}"`);
+      this.emit('transcription', { userId, text, timestamp: Date.now(), source });
+    }
+
+    // Add to transcript for final session summary (but don't process for intent)
+    await this.addTranscriptionEntry(guildId, userId, text, false);
+
+    // Note: Intent detection is disabled for general transcriptions
+    // FumbleBot only responds when explicitly addressed via wake word
+    // This prevents interrupting normal player conversation
   }
 
   /**
@@ -995,6 +1057,17 @@ Question: ${request}`,
       maxLines: this.config.subtitleMaxLines,
     };
 
+    // Determine which transcription provider to use
+    let transcriptionProvider: 'deepgram' | 'whisper' = 'whisper';
+    if (this.config.transcriptionProvider === 'deepgram') {
+      transcriptionProvider = 'deepgram';
+    } else if (this.config.transcriptionProvider === 'auto') {
+      // Auto-select: prefer Deepgram if available
+      transcriptionProvider = deepgramListener.isAvailable ? 'deepgram' : 'whisper';
+    }
+
+    console.log(`[VoiceAssistant] Using transcription provider: ${transcriptionProvider}`);
+
     // Track this guild
     this.activeGuilds.set(guildId, {
       guildId,
@@ -1006,18 +1079,23 @@ Question: ${request}`,
       textChannel,
       transcript,
       subtitles,
+      transcriptionProvider,
     });
 
     // Only start listening if there are humans present
     if (!shouldPause) {
-      voiceListener.startListening(connection, guildId, whisperPrompt);
+      if (transcriptionProvider === 'deepgram') {
+        deepgramListener.startListening(connection, guildId);
+      } else {
+        voiceListener.startListening(connection, guildId, whisperPrompt);
+      }
 
       // Play ready sound to indicate the assistant is active
       // This also helps "prime" the audio system
       await this.playReadySound(guildId);
     }
 
-    this.emit('started', { guildId, channelId: channel.id, paused: shouldPause });
+    this.emit('started', { guildId, channelId: channel.id, paused: shouldPause, transcriptionProvider });
   }
 
   /**
@@ -1047,7 +1125,12 @@ Question: ${request}`,
       await this.postSessionSummary(guildId);
     }
 
-    voiceListener.stopListening();
+    // Stop the appropriate listener
+    if (state?.transcriptionProvider === 'deepgram') {
+      deepgramListener.stopListening();
+    } else {
+      voiceListener.stopListening();
+    }
     await voiceClient.leaveChannel(guildId);
 
     this.activeGuilds.delete(guildId);

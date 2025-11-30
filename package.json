@@ -74,6 +74,7 @@
     "@anthropic-ai/sdk": "^0.32.1",
     "@auth/express": "^0.12.1",
     "@crit-fumble/core": "^9.6.0",
+    "@deepgram/sdk": "^4.11.2",
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.17.0",
     "@modelcontextprotocol/sdk": "^1.23.0",

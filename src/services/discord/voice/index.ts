@@ -3,12 +3,14 @@
  *
  * Exports:
  * - VoiceClient: Join/leave channels, play audio
- * - VoiceListener: Receive audio, detect wake words
+ * - VoiceListener: Receive audio, detect wake words (Whisper-based)
+ * - DeepgramListener: Receive audio, detect wake words (Deepgram-based, preferred)
  * - VoiceAssistant: Process voice commands, respond with TTS
  */
 
 export { VoiceClient, voiceClient } from './client.js';
 export { VoiceListener, voiceListener } from './listener.js';
+export { DeepgramListener, deepgramListener } from './deepgram-listener.js';
 export {
   VoiceAssistant,
   voiceAssistant,
