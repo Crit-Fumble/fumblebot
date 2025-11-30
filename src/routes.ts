@@ -31,6 +31,12 @@ export const routes: Record<string, RouteDefinition[]> = {
       handler: 'handleHealth',
       description: 'Health check endpoint',
     },
+    {
+      method: 'get',
+      path: '/health/detailed',
+      handler: 'handleHealthDetailed',
+      description: 'Detailed health check with DB and Core status',
+    },
   ],
 
   // Authentication

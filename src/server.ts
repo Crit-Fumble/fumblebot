@@ -16,6 +16,7 @@
 import 'dotenv/config';
 
 import express, { type Request, type Response } from 'express';
+import { prisma } from './services/db/client.js';
 import { routes, printRouteTable } from './routes.js';
 import { setupAllMiddleware, requireAdmin, requireGuildAdmin } from './middleware.js';
 import {
@@ -241,6 +242,56 @@ export class PlatformServer {
       // System
       handleHealth: (req, res) => {
         res.json({ status: 'ok', timestamp: new Date().toISOString() });
+      },
+      handleHealthDetailed: async (req, res) => {
+        const timestamp = new Date().toISOString();
+        const results: {
+          status: 'ok' | 'degraded' | 'error';
+          timestamp: string;
+          database: { status: 'ok' | 'error'; latencyMs?: number; error?: string };
+          core: { status: 'ok' | 'error'; latencyMs?: number; error?: string };
+        } = {
+          status: 'ok',
+          timestamp,
+          database: { status: 'error' },
+          core: { status: 'error' },
+        };
+
+        // Check database connection
+        try {
+          const dbStart = Date.now();
+          await prisma.$queryRaw`SELECT 1`;
+          results.database = { status: 'ok', latencyMs: Date.now() - dbStart };
+        } catch (err) {
+          results.database = { status: 'error', error: err instanceof Error ? err.message : 'Unknown error' };
+        }
+
+        // Check Core API connection
+        try {
+          const coreUrl = process.env.CORE_URL || 'https://core.crit-fumble.com';
+          const coreStart = Date.now();
+          const coreResponse = await fetch(`${coreUrl}/health`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000),
+          });
+          if (coreResponse.ok) {
+            results.core = { status: 'ok', latencyMs: Date.now() - coreStart };
+          } else {
+            results.core = { status: 'error', error: `HTTP ${coreResponse.status}` };
+          }
+        } catch (err) {
+          results.core = { status: 'error', error: err instanceof Error ? err.message : 'Unknown error' };
+        }
+
+        // Overall status
+        if (results.database.status === 'error' && results.core.status === 'error') {
+          results.status = 'error';
+        } else if (results.database.status === 'error' || results.core.status === 'error') {
+          results.status = 'degraded';
+        }
+
+        const httpStatus = results.status === 'error' ? 503 : results.status === 'degraded' ? 207 : 200;
+        res.status(httpStatus).json(results);
       },
 
       // Auth
