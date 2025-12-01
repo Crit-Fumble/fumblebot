@@ -42,7 +42,7 @@ export interface UserContext {
  * @example
  * ```typescript
  * const client = new ContainerClient({
- *   coreUrl: 'http://10.116.0.4:4000',
+ *   coreUrl: `${process.env.CORE_SERVER_URL}:${process.env.CORE_SERVER_PORT || '4000'}`,
  *   coreSecret: process.env.CORE_SECRET!,
  * });
  *
@@ -265,12 +265,18 @@ let instance: ContainerClient | null = null;
 
 export function getContainerClient(): ContainerClient {
   if (!instance) {
-    const coreUrl = process.env.CORE_SERVER_URL || process.env.CORE_API_URL || 'http://10.116.0.4:4000';
+    const coreBaseUrl = process.env.CORE_SERVER_URL;
     const coreSecret = process.env.CORE_SECRET;
 
+    if (!coreBaseUrl) {
+      throw new Error('CORE_SERVER_URL environment variable is required for container client');
+    }
     if (!coreSecret) {
       throw new Error('CORE_SECRET environment variable is required for container client');
     }
+
+    const port = process.env.CORE_SERVER_PORT || '4000';
+    const coreUrl = coreBaseUrl.includes(':') ? coreBaseUrl : `${coreBaseUrl}:${port}`;
 
     instance = new ContainerClient({
       coreUrl,

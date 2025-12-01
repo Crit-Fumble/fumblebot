@@ -331,8 +331,14 @@ function getUserInfoForCore(req: Request): CoreUserInfo | null {
  * - Discord Embedded App SDK initialization
  * Core's /activity/* routes are served through this proxy with Discord headers added.
  */
-function getCoreProxyConfig(): CoreProxyConfig {
-  const coreUrl = process.env.CORE_SERVER_URL || 'http://10.108.0.4';
+function getCoreProxyConfig(): CoreProxyConfig | null {
+  const coreUrl = process.env.CORE_SERVER_URL;
+
+  if (!coreUrl) {
+    // Core proxy requires CORE_SERVER_URL to be set
+    return null;
+  }
+
   const corePort = parseInt(process.env.CORE_SERVER_PORT || '4000', 10);
   const debug = process.env.NODE_ENV !== 'production';
   const secret = process.env.CORE_SECRET;
@@ -364,9 +370,7 @@ function getCoreProxyConfig(): CoreProxyConfig {
 export function setupCoreServerProxy(app: Application): void {
   const config = getCoreProxyConfig();
 
-  // Only enable core proxy if CORE_SERVER_URL is set
-  // This allows local development without the core server
-  if (process.env.CORE_SERVER_URL || process.env.NODE_ENV === 'production') {
+  if (config) {
     console.log(`[Middleware] Setting up core proxy to ${config.coreUrl}:${config.corePort}`);
     setupCoreProxy(app, config);
   } else {
@@ -394,20 +398,23 @@ export function setupCoreServerProxy(app: Application): void {
  * - X-Channel-Id: Channel ID from Activity SDK
  */
 export function setupContainerApiProxy(app: Application): void {
-  // Use DO private network for internal traffic (10.116.0.4:4000)
-  // Falls back to public URL for local development
-  const coreBaseUrl = process.env.CORE_SERVER_URL || 'http://10.116.0.4';
-  const corePort = process.env.CORE_SERVER_PORT || '4000';
-  const coreUrl = `${coreBaseUrl}:${corePort}`;
-
+  const coreBaseUrl = process.env.CORE_SERVER_URL;
   const coreSecret = process.env.CORE_SECRET;
-  const debug = process.env.NODE_ENV !== 'production';
 
-  // Only setup if CORE_SECRET is available
-  if (!coreSecret) {
-    console.warn('[Middleware] Container proxy disabled (CORE_SECRET not set)');
+  // Require both CORE_SERVER_URL and CORE_SECRET
+  if (!coreBaseUrl || !coreSecret) {
+    if (!coreBaseUrl) {
+      console.log('[Middleware] Container proxy disabled (CORE_SERVER_URL not set)');
+    }
+    if (!coreSecret) {
+      console.log('[Middleware] Container proxy disabled (CORE_SECRET not set)');
+    }
     return;
   }
+
+  const corePort = process.env.CORE_SERVER_PORT || '4000';
+  const coreUrl = `${coreBaseUrl}:${corePort}`;
+  const debug = process.env.NODE_ENV !== 'production';
 
   console.log(`[Middleware] Setting up container proxy to ${coreUrl}`);
 
@@ -450,7 +457,13 @@ export function setupContainerApiProxy(app: Application): void {
  * - /.proxy/activity/* → Core /activity/*
  */
 export function setupActivityProxy(app: Application): void {
-  const coreBaseUrl = process.env.CORE_SERVER_URL || 'http://10.116.0.4';
+  const coreBaseUrl = process.env.CORE_SERVER_URL;
+
+  if (!coreBaseUrl) {
+    console.log('[Middleware] Activity proxy disabled (CORE_SERVER_URL not set)');
+    return;
+  }
+
   const corePort = process.env.CORE_SERVER_PORT || '4000';
   const coreUrl = `${coreBaseUrl}:${corePort}`;
   const debug = process.env.NODE_ENV !== 'production';

@@ -4,8 +4,8 @@
  * Proxies container API requests from Discord Activity to Core.
  * Handles HTTP and WebSocket requests for container operations.
  *
- * HTTP: /.proxy/api/container/* → http://10.116.0.4:4000/api/container/*
- * WS:   /.proxy/api/container/terminal → ws://10.116.0.4:4000/api/container/terminal
+ * HTTP: /.proxy/api/container/* → ${CORE_SERVER_URL}/api/container/*
+ * WS:   /.proxy/api/container/terminal → ws://${CORE_SERVER_URL}/api/container/terminal
  *
  * @see https://core.crit-fumble.com README for proxy requirements
  */
@@ -48,10 +48,12 @@ interface UserContext {
  *
  * const app = express();
  *
- * setupContainerProxy(app, {
- *   coreUrl: 'http://10.116.0.4:4000',
- *   coreSecret: process.env.CORE_SECRET!,
- * });
+ * if (process.env.CORE_SERVER_URL && process.env.CORE_SECRET) {
+ *   setupContainerProxy(app, {
+ *     coreUrl: `${process.env.CORE_SERVER_URL}:${process.env.CORE_SERVER_PORT || '4000'}`,
+ *     coreSecret: process.env.CORE_SECRET,
+ *   });
+ * }
  * ```
  */
 export function setupContainerProxy(

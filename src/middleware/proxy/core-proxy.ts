@@ -33,9 +33,9 @@ export type GetUserInfoFn = (req: Request) => CoreUserInfo | null;
 export interface CoreProxyConfig {
   /**
    * Core server URL (internal DO network)
-   * @default 'http://10.116.0.4:4000'
+   * Required - set via CORE_SERVER_URL environment variable
    */
-  coreUrl?: string;
+  coreUrl: string;
 
   /**
    * Port the core server is running on
@@ -79,11 +79,10 @@ export interface CoreProxyConfig {
   timeout?: number;
 }
 
-const DEFAULT_CONFIG: Required<Omit<CoreProxyConfig, 'onError' | 'secret' | 'getUserInfo'>> & {
+const DEFAULT_CONFIG: Omit<Required<Omit<CoreProxyConfig, 'coreUrl' | 'onError' | 'secret' | 'getUserInfo'>>, 'coreUrl'> & {
   secret: string | undefined;
   getUserInfo: GetUserInfoFn | undefined;
 } = {
-  coreUrl: 'http://10.116.0.4',
   corePort: 4000,
   // Default proxy paths - core server defines its own API structure
   proxyPaths: [
@@ -100,7 +99,7 @@ const DEFAULT_CONFIG: Required<Omit<CoreProxyConfig, 'onError' | 'secret' | 'get
  * Build the full core server URL
  */
 export function buildCoreUrl(config: CoreProxyConfig): string {
-  const url = config.coreUrl || DEFAULT_CONFIG.coreUrl;
+  const url = config.coreUrl;
   const port = config.corePort || DEFAULT_CONFIG.corePort;
 
   // If URL already has a port, use it as-is
@@ -116,7 +115,7 @@ export function buildCoreUrl(config: CoreProxyConfig): string {
  */
 export function createCoreProxyMiddleware(
   pathPrefix: string,
-  config: CoreProxyConfig = {}
+  config: CoreProxyConfig
 ): RequestHandler {
   const target = buildCoreUrl(config);
   const debug = config.debug ?? DEFAULT_CONFIG.debug;
@@ -202,14 +201,16 @@ export function createCoreProxyMiddleware(
  *
  * const app = express()
  *
- * setupCoreProxy(app, {
- *   coreUrl: process.env.CORE_SERVER_URL || 'http://10.116.0.4',
- *   corePort: 3000,
- *   debug: process.env.NODE_ENV !== 'production',
- * })
+ * if (process.env.CORE_SERVER_URL) {
+ *   setupCoreProxy(app, {
+ *     coreUrl: process.env.CORE_SERVER_URL,
+ *     corePort: 4000,
+ *     debug: process.env.NODE_ENV !== 'production',
+ *   })
+ * }
  * ```
  */
-export function setupCoreProxy(app: Application, config: CoreProxyConfig = {}): void {
+export function setupCoreProxy(app: Application, config: CoreProxyConfig): void {
   const paths = config.proxyPaths || DEFAULT_CONFIG.proxyPaths;
   const target = buildCoreUrl(config);
   const debug = config.debug ?? DEFAULT_CONFIG.debug;
@@ -260,7 +261,7 @@ export function createCoreProxyWithFallback(
 /**
  * Health check for core server connectivity
  */
-export async function checkCoreHealth(config: CoreProxyConfig = {}): Promise<boolean> {
+export async function checkCoreHealth(config: CoreProxyConfig): Promise<boolean> {
   const target = buildCoreUrl(config);
   const timeout = config.timeout ?? 5000;
 

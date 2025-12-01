@@ -14,15 +14,24 @@ import { getSessionUser } from '../middleware.js';
 
 /**
  * Core API configuration for server-to-server requests
+ * CORE_SERVER_URL must be set in production (e.g., http://10.x.x.x for VPC)
  */
-const CORE_API_URL = process.env.CORE_SERVER_URL || 'http://10.116.0.4:4000';
+function getCoreApiUrl(): string {
+  const baseUrl = process.env.CORE_SERVER_URL;
+  if (!baseUrl) {
+    throw new Error('CORE_SERVER_URL environment variable is required');
+  }
+  const port = process.env.CORE_SERVER_PORT || '4000';
+  // Only add port if not already included
+  return baseUrl.includes(':') ? baseUrl : `${baseUrl}:${port}`;
+}
 const CORE_SECRET = process.env.CORE_SECRET || '';
 
 /**
  * Make authenticated request to core API
  */
 async function coreApiRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${CORE_API_URL}${path}`, {
+  const response = await fetch(`${getCoreApiUrl()}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
