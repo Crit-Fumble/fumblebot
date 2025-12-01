@@ -10,6 +10,7 @@ import type {
   DiceRollResult,
   EmbedData,
 } from '../types.js';
+import { getCoreClient } from '../../lib/core-client.js';
 
 /**
  * Parse and roll dice notation (e.g., "2d6+3", "1d20", "4d6")
@@ -123,6 +124,32 @@ export async function handleRoll(
     roll.label = label;
 
     const embed = createRollEmbed(roll, context.username);
+
+    // Log roll to Core server (fire-and-forget, don't block response)
+    if (context.guildId && context.userId) {
+      try {
+        const coreClient = getCoreClient();
+        coreClient.dice.log({
+          guildId: context.guildId,
+          channelId: context.channelId,
+          discordId: context.userId, // Core v10.1.0 supports discordId
+          notation: roll.notation,
+          rolls: roll.rolls,
+          modifier: roll.modifier,
+          total: roll.total,
+          isCrit: roll.isCrit,
+          isFumble: roll.isFumble,
+          label: roll.label || undefined,
+          source: 'discord',
+        }).catch((error) => {
+          // Log error but don't fail the command
+          console.error('[Roll] Failed to log to Core:', error);
+        });
+      } catch (error) {
+        // Core client not configured - skip logging
+        // This is expected in development/testing environments
+      }
+    }
 
     return {
       success: true,
