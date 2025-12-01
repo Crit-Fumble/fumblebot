@@ -15,6 +15,7 @@ import { EventEmitter } from 'events';
 import OpenAI from 'openai';
 // @ts-ignore - prism-media doesn't have types
 import prism from 'prism-media';
+import { loadOpenAIConfig } from '../../../config.js';
 
 // Whisper expects 16kHz, mono, 16-bit PCM
 // Discord receiver provides raw Opus packets - we decode to 48kHz stereo 16-bit PCM
@@ -74,12 +75,16 @@ export class VoiceListener extends EventEmitter {
   }
 
   private initOpenAI(): void {
-    const apiKey = process.env.FUMBLEBOT_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-    if (apiKey) {
-      this.openai = new OpenAI({ apiKey });
-      console.log('[VoiceListener] OpenAI client initialized for Whisper transcription');
-    } else {
-      console.warn('[VoiceListener] No OpenAI API key found - transcription disabled');
+    try {
+      const openaiConfig = loadOpenAIConfig();
+      if (openaiConfig.apiKey) {
+        this.openai = new OpenAI({ apiKey: openaiConfig.apiKey });
+        console.log('[VoiceListener] OpenAI client initialized for Whisper transcription');
+      } else {
+        console.warn('[VoiceListener] No OpenAI API key found - transcription disabled');
+      }
+    } catch {
+      console.warn('[VoiceListener] OpenAI config not available - transcription disabled');
     }
   }
 

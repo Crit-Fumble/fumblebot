@@ -84,48 +84,60 @@ import { GradientService } from './services/ai/gradient.js';
 import { FumbleBotClient, setFumbleBotClient } from './services/discord/index.js';
 import { voiceAssistant } from './services/discord/voice/index.js';
 import type { PlatformServerConfig } from './models/types.js';
+import {
+  loadOpenAIConfig,
+  loadAnthropicConfig,
+  loadGradientConfig,
+  loadDiscordConfig,
+  getServerConfig,
+  getCoreProxyConfig,
+} from './config.js';
 
 // Re-export types
 export type { Platform, PlatformContext, PlatformServerConfig, ActivityServerConfig } from './models/types.js';
 
 /**
- * Initialize AI services with API keys from environment
+ * Initialize AI services with API keys from centralized config
  */
 function initializeAIService(): void {
   const ai = AIService.getInstance();
 
-  const anthropicKey = process.env.FUMBLEBOT_ANTHROPIC_API_KEY;
-  if (anthropicKey) {
-    ai.initializeAnthropic({
-      apiKey: anthropicKey,
-      model: 'claude-sonnet-4-20250514',
-      maxTokens: 4096,
-    });
-  } else {
-    console.warn('[Platform] FUMBLEBOT_ANTHROPIC_API_KEY not set - Anthropic AI unavailable');
+  try {
+    const anthropicConfig = loadAnthropicConfig();
+    if (anthropicConfig.apiKey) {
+      ai.initializeAnthropic({
+        apiKey: anthropicConfig.apiKey,
+        model: anthropicConfig.model,
+        maxTokens: 4096,
+      });
+    }
+  } catch {
+    console.warn('[Platform] Anthropic API key not configured - Anthropic AI unavailable');
   }
 
-  const openaiKey = process.env.FUMBLEBOT_OPENAI_API_KEY;
-  if (openaiKey) {
-    ai.initializeOpenAI({
-      apiKey: openaiKey,
-      model: 'gpt-4o',
-      maxTokens: 4096,
-    });
-  } else {
-    console.warn('[Platform] FUMBLEBOT_OPENAI_API_KEY not set - OpenAI unavailable');
+  try {
+    const openaiConfig = loadOpenAIConfig();
+    if (openaiConfig.apiKey) {
+      ai.initializeOpenAI({
+        apiKey: openaiConfig.apiKey,
+        model: openaiConfig.model,
+        maxTokens: 4096,
+      });
+    }
+  } catch {
+    console.warn('[Platform] OpenAI API key not configured - OpenAI unavailable');
   }
 
   // Initialize DigitalOcean Gradient AI (Llama, Mistral, and partner models)
-  const gradientKey = process.env.FUMBLEBOT_GRADIENT_INFERENCE_KEY;
-  if (gradientKey) {
+  const gradientConfig = loadGradientConfig();
+  if (gradientConfig) {
     const gradient = GradientService.getInstance();
     gradient.initialize({
-      inferenceKey: gradientKey,
-      defaultModel: process.env.FUMBLEBOT_GRADIENT_DEFAULT_MODEL || 'llama-3.3-70b-instruct',
+      inferenceKey: gradientConfig.inferenceKey,
+      defaultModel: gradientConfig.defaultModel,
     });
   } else {
-    console.warn('[Platform] FUMBLEBOT_GRADIENT_INFERENCE_KEY not set - Gradient AI unavailable');
+    console.warn('[Platform] Gradient API key not configured - Gradient AI unavailable');
   }
 }
 
@@ -228,7 +240,7 @@ export class PlatformServer {
     });
 
     // Log routes in development
-    if (process.env.NODE_ENV !== 'production') {
+    if (!getServerConfig().isProduction) {
       printRouteTable();
     }
   }
@@ -268,7 +280,10 @@ export class PlatformServer {
 
         // Check Core API connection
         try {
-          const coreUrl = process.env.CORE_URL || 'https://core.crit-fumble.com';
+          const coreProxyConfig = getCoreProxyConfig();
+          const coreUrl = coreProxyConfig
+            ? (coreProxyConfig.url.includes(':') ? coreProxyConfig.url : `${coreProxyConfig.url}:${coreProxyConfig.port}`)
+            : 'https://core.crit-fumble.com';
           const coreStart = Date.now();
           const coreResponse = await fetch(`${coreUrl}/health`, {
             method: 'GET',
@@ -394,37 +409,41 @@ export type ActivityServer = PlatformServer;
 const isMainModule = import.meta.url.endsWith('server.ts') || import.meta.url.endsWith('server.js');
 
 if (isMainModule) {
-  const port = parseInt(process.env.PORT || '3000');
+  const serverConfig = getServerConfig();
   const config = {
-    port,
-    host: '0.0.0.0',
-    publicUrl: process.env.PUBLIC_URL || 'https://fumblebot.crit-fumble.com',
+    port: serverConfig.port,
+    host: serverConfig.host,
+    publicUrl: serverConfig.publicUrl,
   };
 
-  console.log('[Platform] Starting server on port', port);
+  console.log('[Platform] Starting server on port', config.port);
 
   // Initialize AI service with API keys
   initializeAIService();
 
   const server = new PlatformServer(config);
 
-  // Initialize Discord bot if token is provided
+  // Initialize Discord bot if credentials are provided
   let discordBot: FumbleBotClient | null = null;
-  const discordToken = process.env.FUMBLEBOT_DISCORD_TOKEN;
-  const discordClientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID;
+  let discordConfig: ReturnType<typeof loadDiscordConfig> | null = null;
+  try {
+    discordConfig = loadDiscordConfig();
+  } catch {
+    console.warn('[Platform] Discord config not available - Discord bot disabled');
+  }
 
   server.start().then(async () => {
-    console.log('[Platform] Ready at http://localhost:' + port + '/discord/activity');
+    console.log('[Platform] Ready at http://localhost:' + config.port + '/discord/activity');
 
     // Start Discord bot
-    if (discordToken && discordClientId) {
+    if (discordConfig?.token && discordConfig?.clientId) {
       try {
         discordBot = new FumbleBotClient({
-          token: discordToken,
-          clientId: discordClientId,
-          clientSecret: process.env.FUMBLEBOT_DISCORD_CLIENT_SECRET || '',
-          publicKey: process.env.FUMBLEBOT_DISCORD_PUBLIC_KEY || '',
-          guildId: process.env.FUMBLEBOT_DISCORD_GUILD_ID,
+          token: discordConfig.token,
+          clientId: discordConfig.clientId,
+          clientSecret: discordConfig.clientSecret,
+          publicKey: discordConfig.publicKey,
+          guildId: discordConfig.guildId,
         });
         await discordBot.start();
         setFumbleBotClient(discordBot); // Make bot available to voice API
@@ -435,7 +454,7 @@ if (isMainModule) {
         // Continue running API server even if bot fails
       }
     } else {
-      console.warn('[Platform] FUMBLEBOT_DISCORD_TOKEN not set - Discord bot disabled');
+      console.warn('[Platform] Discord credentials not configured - Discord bot disabled');
     }
   }).catch((err) => {
     console.error('[Platform] Failed to start:', err);

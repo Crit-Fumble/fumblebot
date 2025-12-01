@@ -45,13 +45,19 @@ interface UserContext {
  * ```typescript
  * import express from 'express';
  * import { setupContainerProxy } from './services/container';
+ * import { getCoreProxyConfig } from './config';
  *
  * const app = express();
+ * const coreConfig = getCoreProxyConfig();
  *
- * if (process.env.CORE_SERVER_URL && process.env.CORE_SECRET) {
+ * if (coreConfig) {
+ *   const coreUrl = coreConfig.url.includes(':')
+ *     ? coreConfig.url
+ *     : `${coreConfig.url}:${coreConfig.port}`;
+ *
  *   setupContainerProxy(app, {
- *     coreUrl: `${process.env.CORE_SERVER_URL}:${process.env.CORE_SERVER_PORT || '4000'}`,
- *     coreSecret: process.env.CORE_SECRET,
+ *     coreUrl,
+ *     coreSecret: coreConfig.secret,
  *   });
  * }
  * ```

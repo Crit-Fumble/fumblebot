@@ -11,21 +11,25 @@ import crypto from 'crypto';
 import type { AuthActivitiesResponse } from '@crit-fumble/core';
 import type { PlatformServerConfig } from '../models/types.js';
 import { getSessionUser } from '../middleware.js';
+import { getCoreProxyConfig, loadDiscordConfig } from '../config.js';
 
 /**
- * Core API configuration for server-to-server requests
+ * Get Core API URL from centralized config
  * CORE_SERVER_URL must be set in production (e.g., http://10.x.x.x for VPC)
  */
 function getCoreApiUrl(): string {
-  const baseUrl = process.env.CORE_SERVER_URL;
-  if (!baseUrl) {
+  const coreConfig = getCoreProxyConfig();
+  if (!coreConfig) {
     throw new Error('CORE_SERVER_URL environment variable is required');
   }
-  const port = process.env.CORE_SERVER_PORT || '4000';
-  // Only add port if not already included
-  return baseUrl.includes(':') ? baseUrl : `${baseUrl}:${port}`;
+  // Only add port if not already included in URL
+  return coreConfig.url.includes(':') ? coreConfig.url : `${coreConfig.url}:${coreConfig.port}`;
 }
-const CORE_SECRET = process.env.CORE_SECRET || '';
+
+function getCoreSecret(): string {
+  const coreConfig = getCoreProxyConfig();
+  return coreConfig?.secret || '';
+}
 
 /**
  * Make authenticated request to core API
@@ -35,7 +39,7 @@ async function coreApiRequest<T>(path: string, options?: RequestInit): Promise<T
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'X-Core-Secret': CORE_SECRET,
+      'X-Core-Secret': getCoreSecret(),
       ...options?.headers,
     },
   });
@@ -162,12 +166,13 @@ export async function handleTokenExchange(req: Request, res: Response): Promise<
   }
 
   try {
+    const discordConfig = loadDiscordConfig();
     const response = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: process.env.FUMBLEBOT_DISCORD_CLIENT_ID!,
-        client_secret: process.env.FUMBLEBOT_DISCORD_CLIENT_SECRET!,
+        client_id: discordConfig.clientId,
+        client_secret: discordConfig.clientSecret,
         grant_type: 'authorization_code',
         code,
       }),
@@ -248,12 +253,13 @@ export async function handleOAuthCallback(
 
   try {
     // Exchange code for access token
+    const discordConfig = loadDiscordConfig();
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: process.env.FUMBLEBOT_DISCORD_CLIENT_ID!,
-        client_secret: process.env.FUMBLEBOT_DISCORD_CLIENT_SECRET!,
+        client_id: discordConfig.clientId,
+        client_secret: discordConfig.clientSecret,
         grant_type: 'authorization_code',
         code,
         redirect_uri: `${config.publicUrl}/auth/callback`,
@@ -442,7 +448,17 @@ export async function handleGetUserGuilds(req: Request, res: Response): Promise<
       return;
     }
 
-    let guilds = await response.json();
+    let guilds: Array<{ id: string; permissions: string }> = await response.json();
+
+    // Cache guild permissions in session for admin role determination
+    // Discord returns permissions as a string (large integer)
+    const guildPermissions: Record<string, string> = {};
+    for (const guild of guilds) {
+      if (guild.permissions) {
+        guildPermissions[guild.id] = guild.permissions;
+      }
+    }
+    req.session.guildPermissions = guildPermissions;
 
     // If botOnly, filter to guilds where FumbleBot is installed
     // Check with core API which guilds exist in our database

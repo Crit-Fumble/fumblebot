@@ -24,6 +24,7 @@ import { deepgramTTS, DeepgramTTS, type DeepgramVoice } from './deepgram-tts.js'
 import { getPromptsForContext } from '../../../controllers/prompts.js';
 import { AIService } from '../../ai/service.js';
 import OpenAI from 'openai';
+import { loadOpenAIConfig, getVoiceConfig } from '../../../config.js';
 
 /** Intent parsing result from LLM */
 export interface IntentResult {
@@ -163,10 +164,14 @@ export class VoiceAssistant extends EventEmitter {
   }
 
   private initOpenAI(): void {
-    const apiKey = process.env.FUMBLEBOT_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-    if (apiKey) {
-      this.openai = new OpenAI({ apiKey });
-      console.log('[VoiceAssistant] OpenAI client initialized for TTS');
+    try {
+      const openaiConfig = loadOpenAIConfig();
+      if (openaiConfig.apiKey) {
+        this.openai = new OpenAI({ apiKey: openaiConfig.apiKey });
+        console.log('[VoiceAssistant] OpenAI client initialized for TTS');
+      }
+    } catch {
+      console.warn('[VoiceAssistant] OpenAI config not available');
     }
   }
 
@@ -1596,8 +1601,8 @@ ${transcriptText.slice(0, 2000)}`,
   }
 }
 
-// Singleton instance with test guild from env
+// Singleton instance with test guild from centralized config
 export const voiceAssistant = new VoiceAssistant({
-  testGuildId: process.env.FUMBLEBOT_DISCORD_TEST_GUILD_ID,
+  testGuildId: getVoiceConfig().testGuildId,
   ttsEnabled: true, // TTS enabled for audible responses
 });

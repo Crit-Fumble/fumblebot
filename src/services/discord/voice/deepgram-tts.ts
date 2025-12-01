@@ -10,6 +10,7 @@
  */
 
 import { createClient } from '@deepgram/sdk';
+import { getVoiceConfig } from '../../../config.js';
 
 // Available Deepgram Aura voices
 export type DeepgramVoice =
@@ -52,9 +53,9 @@ export class DeepgramTTS {
   }
 
   private initDeepgram(): void {
-    const apiKey = process.env.FUMBLEBOT_DEEPGRAM_API_KEY;
-    if (apiKey) {
-      this.deepgram = createClient(apiKey);
+    const voiceConfig = getVoiceConfig();
+    if (voiceConfig.deepgramApiKey) {
+      this.deepgram = createClient(voiceConfig.deepgramApiKey);
       console.log('[DeepgramTTS] Initialized with voice:', this.config.voice);
     } else {
       console.warn('[DeepgramTTS] No Deepgram API key found - TTS disabled');

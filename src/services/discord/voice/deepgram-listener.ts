@@ -19,6 +19,7 @@ import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 import type { LiveClient } from '@deepgram/sdk';
 // @ts-ignore - prism-media doesn't have types
 import prism from 'prism-media';
+import { getVoiceConfig } from '../../../config.js';
 
 // Deepgram expects 16kHz mono linear16 PCM
 // Discord receiver provides raw Opus packets - we decode to 48kHz stereo 16-bit PCM
@@ -89,9 +90,9 @@ export class DeepgramListener extends EventEmitter {
   }
 
   private initDeepgram(): void {
-    const apiKey = process.env.FUMBLEBOT_DEEPGRAM_API_KEY;
-    if (apiKey) {
-      this.deepgram = createClient(apiKey);
+    const voiceConfig = getVoiceConfig();
+    if (voiceConfig.deepgramApiKey) {
+      this.deepgram = createClient(voiceConfig.deepgramApiKey);
       console.log('[DeepgramListener] Deepgram client initialized');
     } else {
       console.warn('[DeepgramListener] No Deepgram API key found - transcription disabled');

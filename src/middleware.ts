@@ -9,6 +9,19 @@ import cookieParser from 'cookie-parser';
 import { createProxyMiddleware, type Options as ProxyOptions } from 'http-proxy-middleware';
 import { setupCoreProxy, type CoreProxyConfig, type CoreUserInfo } from './middleware/proxy/index.js';
 import { setupContainerProxy, type ContainerProxyConfig } from './services/container/index.js';
+import {
+  loadDiscordConfig,
+  getCoreProxyConfig as getAppCoreProxyConfig,
+  getSecurityConfig,
+  getServerConfig,
+  isAdmin,
+} from './config.js';
+
+// Discord permission flags
+// https://discord.com/developers/docs/topics/permissions#permissions-bitwise-permission-flags
+const DISCORD_PERMISSIONS = {
+  ADMINISTRATOR: 0x8n, // 1 << 3
+} as const;
 
 // Extend Express session with our user data
 declare module 'express-session' {
@@ -22,18 +35,22 @@ declare module 'express-session' {
     };
     accessToken?: string;
     expiresAt?: number;
+    /** Cached guild permissions: guildId -> permissions bigint as string */
+    guildPermissions?: Record<string, string>;
   }
 }
+
+// Cache Discord config at module load
+let _discordClientId: string | null = null;
 
 /**
  * Get Discord Client ID (required)
  */
 function getDiscordClientId(): string {
-  const clientId = process.env.FUMBLEBOT_DISCORD_CLIENT_ID;
-  if (!clientId) {
-    throw new Error('FUMBLEBOT_DISCORD_CLIENT_ID environment variable is required');
+  if (!_discordClientId) {
+    _discordClientId = loadDiscordConfig().clientId;
   }
-  return clientId;
+  return _discordClientId;
 }
 
 /**
@@ -97,7 +114,7 @@ export function setupCors(app: Application): void {
  */
 export function setupSecurityHeaders(app: Application): void {
   const DISCORD_CLIENT_ID = getDiscordClientId();
-  const isProduction = process.env.NODE_ENV === 'production';
+  const { isProduction } = getServerConfig();
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     // HSTS - Force HTTPS for 1 year (production only)
@@ -154,12 +171,12 @@ export function setupSecurityHeaders(app: Application): void {
  * Setup session middleware with Prisma-backed store
  */
 export function setupSession(app: Application): void {
-  const sessionSecret = process.env.SESSION_SECRET;
+  const { sessionSecret } = getSecurityConfig();
   if (!sessionSecret) {
     throw new Error('SESSION_SECRET environment variable is required');
   }
 
-  const isProduction = process.env.NODE_ENV === 'production';
+  const { isProduction } = getServerConfig();
 
   app.use(cookieParser());
 
@@ -204,8 +221,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
 /**
  * Middleware to require admin privileges
- * For now, checks if the user is in the admin list from environment
- * TODO: Implement proper role-based access control with database
+ * Uses centralized isAdmin() from config
  */
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   const user = getSessionUser(req);
@@ -214,9 +230,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     return;
   }
 
-  // Check if user is in admin list (comma-separated Discord IDs)
-  const adminIds = process.env.FUMBLEBOT_ADMIN_IDS?.split(',').map(id => id.trim()) || [];
-  if (!adminIds.includes(user.discordId)) {
+  if (!isAdmin(user.discordId)) {
     res.status(403).json({ error: 'Admin access required' });
     return;
   }
@@ -225,19 +239,15 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 /**
- * Check if user is an admin based on environment config
- */
-function isUserAdmin(discordId: string): boolean {
-  const adminIds = process.env.FUMBLEBOT_ADMIN_IDS?.split(',').map(id => id.trim()) || [];
-  return adminIds.includes(discordId);
-}
-
-/**
- * Get the managed guild ID from environment
+ * Get the managed guild ID from config
  * In production, this restricts admin access to a single guild
  */
 export function getManagedGuildId(): string | null {
-  return process.env.FUMBLEBOT_DISCORD_GUILD_ID || null;
+  try {
+    return loadDiscordConfig().guildId || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -265,7 +275,7 @@ export function requireGuildAdmin(req: Request, res: Response, next: NextFunctio
 
   // In production, restrict to the managed guild only
   const managedGuildId = getManagedGuildId();
-  const isProduction = process.env.NODE_ENV === 'production';
+  const { isProduction } = getServerConfig();
 
   if (isProduction && managedGuildId && guildId !== managedGuildId) {
     res.status(403).json({
@@ -276,7 +286,7 @@ export function requireGuildAdmin(req: Request, res: Response, next: NextFunctio
   }
 
   // Check if user is a platform admin (bypass guild check)
-  if (isUserAdmin(user.discordId)) {
+  if (isAdmin(user.discordId)) {
     next();
     return;
   }
@@ -292,8 +302,55 @@ export function requireGuildAdmin(req: Request, res: Response, next: NextFunctio
 }
 
 /**
+ * Check if user has Discord ADMINISTRATOR permission for a guild
+ * Uses cached permissions from session if available
+ */
+function hasDiscordAdminPermission(req: Request, guildId: string): boolean {
+  const permissions = req.session.guildPermissions?.[guildId];
+  if (!permissions) {
+    return false;
+  }
+
+  try {
+    const permBits = BigInt(permissions);
+    return (permBits & DISCORD_PERMISSIONS.ADMINISTRATOR) !== 0n;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Extract guild ID from request
+ * Looks in query params, body, or path
+ */
+function extractGuildId(req: Request): string | null {
+  // Query param
+  if (req.query.guildId && typeof req.query.guildId === 'string') {
+    return req.query.guildId;
+  }
+
+  // Body (for POST requests)
+  if (req.body?.guildId && typeof req.body.guildId === 'string') {
+    return req.body.guildId;
+  }
+
+  // Path param patterns like /activity/:guildId or /guild/:guildId
+  const pathMatch = req.path.match(/\/(activity|guild|container)\/(\d+)/);
+  if (pathMatch) {
+    return pathMatch[2];
+  }
+
+  return null;
+}
+
+/**
  * Extract user info from request for core proxy authentication
  * Returns user ID and role to forward to core server
+ *
+ * Role determination:
+ * 1. Global admin (FUMBLEBOT_ADMIN_IDS) -> always 'admin'
+ * 2. Discord ADMINISTRATOR permission in the guild -> 'admin' for that guild
+ * 3. Otherwise -> 'user'
  */
 function getUserInfoForCore(req: Request): CoreUserInfo | null {
   const user = getSessionUser(req);
@@ -301,64 +358,56 @@ function getUserInfoForCore(req: Request): CoreUserInfo | null {
     return null;
   }
 
-  const role = isUserAdmin(user.discordId) ? 'admin' : 'user';
+  // Global admins are always admin
+  if (isAdmin(user.discordId)) {
+    return {
+      userId: user.discordId,
+      role: 'admin',
+    };
+  }
 
+  // Check Discord ADMINISTRATOR permission for the guild
+  const guildId = extractGuildId(req);
+  if (guildId && hasDiscordAdminPermission(req, guildId)) {
+    return {
+      userId: user.discordId,
+      role: 'admin',
+    };
+  }
+
+  // Default to user role
   return {
     userId: user.discordId,
-    role,
+    role: 'user',
   };
 }
 
 /**
- * Get core proxy configuration from environment
- *
- * Configure which paths to proxy via CORE_PROXY_PATHS environment variable.
- * Defaults to '/api/core', '/wiki', and '/activity' prefixes.
- *
- * Proxy paths:
- * - /api/core/* - Core API endpoints (campaigns, characters, sessions, etc.)
- * - /wiki/* - Wiki content served by core
- * - /activity/* - React activity UI served by core (web-optimized)
- *
- * Authentication:
- * - CORE_SECRET: Shared secret for service-to-service auth (X-Core-Secret header)
- * - User ID and role are forwarded via X-User-Id and X-User-Role headers
- *
- * Discord Compatibility:
- * Fumblebot handles Discord-specific concerns before proxying to core:
- * - Discord OAuth token exchange (/api/token)
- * - CSP headers for Discord iframe embedding
- * - Discord Embedded App SDK initialization
- * Core's /activity/* routes are served through this proxy with Discord headers added.
+ * Get core proxy configuration from centralized config
  */
 function getCoreProxyConfig(): CoreProxyConfig | null {
-  const coreUrl = process.env.CORE_SERVER_URL;
+  const coreConfig = getAppCoreProxyConfig();
 
-  if (!coreUrl) {
-    // Core proxy requires CORE_SERVER_URL to be set
+  if (!coreConfig) {
     return null;
   }
 
-  const corePort = parseInt(process.env.CORE_SERVER_PORT || '4000', 10);
-  const debug = process.env.NODE_ENV !== 'production';
-  const secret = process.env.CORE_SECRET;
+  const { isProduction } = getServerConfig();
 
-  // Default proxy paths - core server owns the API/UI structure
-  // /activity is the React activity UI (web-optimized, served through Discord compatibility layer)
-  const defaultPaths = ['/api/core', '/wiki', '/activity'];
-  const customPaths = process.env.CORE_PROXY_PATHS?.split(',').map(p => p.trim()).filter(Boolean);
-
-  if (!secret && process.env.NODE_ENV === 'production') {
+  if (!coreConfig.secret && isProduction) {
     console.warn('[Middleware] CORE_SECRET not set - core proxy auth will fail');
   }
 
+  // Default proxy paths - core server owns the API/UI structure
+  const defaultPaths = ['/api/core', '/wiki', '/activity'];
+
   return {
-    coreUrl,
-    corePort,
-    debug,
-    secret,
+    coreUrl: coreConfig.url,
+    corePort: coreConfig.port,
+    debug: !isProduction,
+    secret: coreConfig.secret,
     getUserInfo: getUserInfoForCore,
-    proxyPaths: customPaths || defaultPaths,
+    proxyPaths: defaultPaths,
   };
 }
 
@@ -383,46 +432,29 @@ export function setupCoreServerProxy(app: Application): void {
  *
  * Forwards container API requests from Discord Activity to Core.
  * This enables the activity client to manage containers (start, stop, exec, terminal).
- *
- * Paths proxied:
- * - /.proxy/api/container/start - Start a container for guild/channel
- * - /.proxy/api/container/stop - Stop a container
- * - /.proxy/api/container/status - Get container status
- * - /.proxy/api/container/exec - Execute command in container (for MCP tools)
- *
- * Headers added:
- * - X-Core-Secret: Service auth secret
- * - X-User-Id: Discord user ID (from session or request headers)
- * - X-User-Name: Username for container prompt
- * - X-Guild-Id: Guild ID from Activity SDK
- * - X-Channel-Id: Channel ID from Activity SDK
  */
 export function setupContainerApiProxy(app: Application): void {
-  const coreBaseUrl = process.env.CORE_SERVER_URL;
-  const coreSecret = process.env.CORE_SECRET;
+  const coreConfig = getAppCoreProxyConfig();
 
-  // Require both CORE_SERVER_URL and CORE_SECRET
-  if (!coreBaseUrl || !coreSecret) {
-    if (!coreBaseUrl) {
+  if (!coreConfig || !coreConfig.secret) {
+    if (!coreConfig) {
       console.log('[Middleware] Container proxy disabled (CORE_SERVER_URL not set)');
-    }
-    if (!coreSecret) {
+    } else if (!coreConfig.secret) {
       console.log('[Middleware] Container proxy disabled (CORE_SECRET not set)');
     }
     return;
   }
 
-  const corePort = process.env.CORE_SERVER_PORT || '4000';
-  const coreUrl = `${coreBaseUrl}:${corePort}`;
-  const debug = process.env.NODE_ENV !== 'production';
+  const coreUrl = `${coreConfig.url}:${coreConfig.port}`;
+  const { isProduction } = getServerConfig();
 
   console.log(`[Middleware] Setting up container proxy to ${coreUrl}`);
 
   setupContainerProxy(app, {
     coreUrl,
-    coreSecret,
+    coreSecret: coreConfig.secret,
     proxyPrefix: '/.proxy',
-    debug,
+    debug: !isProduction,
     // Extract user context from session or request headers
     getUserContext: (req: Request) => {
       // Try session first
@@ -457,16 +489,16 @@ export function setupContainerApiProxy(app: Application): void {
  * - /.proxy/activity/* → Core /activity/*
  */
 export function setupActivityProxy(app: Application): void {
-  const coreBaseUrl = process.env.CORE_SERVER_URL;
+  const coreConfig = getAppCoreProxyConfig();
 
-  if (!coreBaseUrl) {
+  if (!coreConfig) {
     console.log('[Middleware] Activity proxy disabled (CORE_SERVER_URL not set)');
     return;
   }
 
-  const corePort = process.env.CORE_SERVER_PORT || '4000';
-  const coreUrl = `${coreBaseUrl}:${corePort}`;
-  const debug = process.env.NODE_ENV !== 'production';
+  const coreUrl = `${coreConfig.url}:${coreConfig.port}`;
+  const { isProduction } = getServerConfig();
+  const debug = !isProduction;
 
   console.log(`[Middleware] Setting up activity proxy /.proxy/activity/* -> ${coreUrl}/activity/*`);
 

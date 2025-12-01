@@ -16,6 +16,7 @@ import type {
   ContainerExecRequest,
   ContainerExecResponse,
 } from '@crit-fumble/core';
+import { getCoreProxyConfig } from '../../config.js';
 
 export interface ContainerClientConfig {
   /** Core API URL (internal or public) */
@@ -41,10 +42,8 @@ export interface UserContext {
  *
  * @example
  * ```typescript
- * const client = new ContainerClient({
- *   coreUrl: `${process.env.CORE_SERVER_URL}:${process.env.CORE_SERVER_PORT || '4000'}`,
- *   coreSecret: process.env.CORE_SECRET!,
- * });
+ * // Use the singleton (configured from centralized config)
+ * const client = getContainerClient();
  *
  * // Start a container
  * const container = await client.start({
@@ -260,27 +259,25 @@ export class ContainerClient {
   }
 }
 
-// Singleton instance - configured from environment
+// Singleton instance - configured from centralized config
 let instance: ContainerClient | null = null;
 
 export function getContainerClient(): ContainerClient {
   if (!instance) {
-    const coreBaseUrl = process.env.CORE_SERVER_URL;
-    const coreSecret = process.env.CORE_SECRET;
+    const coreConfig = getCoreProxyConfig();
 
-    if (!coreBaseUrl) {
+    if (!coreConfig) {
       throw new Error('CORE_SERVER_URL environment variable is required for container client');
     }
-    if (!coreSecret) {
+    if (!coreConfig.secret) {
       throw new Error('CORE_SECRET environment variable is required for container client');
     }
 
-    const port = process.env.CORE_SERVER_PORT || '4000';
-    const coreUrl = coreBaseUrl.includes(':') ? coreBaseUrl : `${coreBaseUrl}:${port}`;
+    const coreUrl = coreConfig.url.includes(':') ? coreConfig.url : `${coreConfig.url}:${coreConfig.port}`;
 
     instance = new ContainerClient({
       coreUrl,
-      coreSecret,
+      coreSecret: coreConfig.secret,
     });
   }
 
