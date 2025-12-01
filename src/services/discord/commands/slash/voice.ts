@@ -1,6 +1,11 @@
 /**
  * Voice Commands
- * Commands for voice channel integration, sound playback, and voice assistant
+ * Simplified commands for voice channel transcription and AI assistant
+ *
+ * Commands:
+ * - /voice transcribe - Join channel for transcription only
+ * - /voice assistant - Join channel with AI assistant (or upgrade from transcribe)
+ * - /voice end - End session and receive transcript via DM
  */
 
 import {
@@ -15,64 +20,37 @@ import { voiceClient, voiceAssistant } from '../../voice/index.js';
 import type { FumbleBotClient } from '../../client.js';
 import type { CommandHandler } from '../types.js';
 
-// Test guild ID from environment
-const TEST_GUILD_ID = process.env.FUMBLEBOT_DISCORD_TEST_GUILD_ID;
-const HOME_GUILD_ID = process.env.FUMBLEBOT_DISCORD_GUILD_ID;
+// Admin IDs from environment
 const ADMIN_IDS = (process.env.FUMBLEBOT_ADMIN_IDS || '').split(',').filter(Boolean);
 
 /**
- * Check if user is an admin (can use voice listen commands)
+ * Check if user is an admin (can use voice commands)
  */
 function isAdmin(userId: string): boolean {
   return ADMIN_IDS.includes(userId);
-}
-
-/**
- * Check if guild is allowed for voice commands (test or home server)
- */
-function isAllowedGuild(guildId: string): boolean {
-  return guildId === TEST_GUILD_ID || guildId === HOME_GUILD_ID;
 }
 
 // Define slash commands
 export const voiceCommands = [
   new SlashCommandBuilder()
     .setName('voice')
-    .setDescription('Voice channel integration commands')
+    .setDescription('Voice channel commands (admin only)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Connect)
     .setDMPermission(false)
     .addSubcommand((subcommand) =>
       subcommand
-        .setName('join')
-        .setDescription('Join voice channel and start listening for "Hey FumbleBot"')
-    )
-    .addSubcommand((subcommand) =>
-      subcommand.setName('leave').setDescription('Leave the current voice channel')
-    )
-    .addSubcommand((subcommand) =>
-      subcommand.setName('status').setDescription('Check voice connection status')
+        .setName('transcribe')
+        .setDescription('Join voice channel for transcription only (admin only)')
     )
     .addSubcommand((subcommand) =>
       subcommand
-        .setName('play')
-        .setDescription('Play a sound effect from RPG assets')
-        .addStringOption((option) =>
-          option
-            .setName('asset')
-            .setDescription('Asset ID or name to play')
-            .setRequired(true)
-            .setAutocomplete(true)
-        )
-        .addNumberOption((option) =>
-          option
-            .setName('volume')
-            .setDescription('Volume level (0.0 to 1.0)')
-            .setMinValue(0.0)
-            .setMaxValue(1.0)
-        )
+        .setName('assistant')
+        .setDescription('Join voice channel with AI assistant (admin only)')
     )
     .addSubcommand((subcommand) =>
-      subcommand.setName('stop').setDescription('Stop current audio playback')
+      subcommand
+        .setName('end')
+        .setDescription('End voice session and receive transcript via DM (admin only)')
     ),
 ];
 
@@ -86,20 +64,14 @@ export async function voiceHandler(
   const subcommand = interaction.options.getSubcommand();
 
   switch (subcommand) {
-    case 'join':
-      await handleJoin(interaction);
+    case 'transcribe':
+      await handleTranscribe(interaction);
       break;
-    case 'leave':
-      await handleLeave(interaction);
+    case 'assistant':
+      await handleAssistant(interaction);
       break;
-    case 'status':
-      await handleStatus(interaction);
-      break;
-    case 'play':
-      await handlePlay(interaction);
-      break;
-    case 'stop':
-      await handleStop(interaction);
+    case 'end':
+      await handleEnd(interaction);
       break;
     default:
       await interaction.reply({
@@ -110,17 +82,26 @@ export async function voiceHandler(
 }
 
 /**
- * Join voice channel and start listening
+ * /voice transcribe - Join voice channel for transcription only
  */
-async function handleJoin(interaction: ChatInputCommandInteraction) {
+async function handleTranscribe(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId!;
   const userId = interaction.user.id;
   const member = interaction.member as GuildMember;
   const voiceChannel = member.voice.channel;
 
+  // Admin check
+  if (!isAdmin(userId)) {
+    await interaction.reply({
+      content: 'This command is only available to server admins.',
+      ephemeral: true,
+    });
+    return;
+  }
+
   if (!voiceChannel) {
     await interaction.reply({
-      content: '❌ You need to be in a voice channel first!',
+      content: 'You need to be in a voice channel first!',
       ephemeral: true,
     });
     return;
@@ -131,281 +112,254 @@ async function handleJoin(interaction: ChatInputCommandInteraction) {
     voiceChannel.type !== ChannelType.GuildStageVoice
   ) {
     await interaction.reply({
-      content: '❌ Cannot join this type of channel.',
+      content: 'Cannot join this type of channel.',
       ephemeral: true,
     });
     return;
   }
 
-  // Check if voice listening is available for this user/guild
-  const canListen = isAdmin(userId) && isAllowedGuild(guildId);
-
-  // Check if already listening
+  // Check if already active
   if (voiceAssistant.isActive(guildId)) {
-    await interaction.reply({
-      content: '🎧 Already listening for wake word in this server.',
-      ephemeral: true,
-    });
-    return;
-  }
-
-  // Show loading state immediately
-  const loadingEmbed = new EmbedBuilder()
-    .setTitle('⏳ Connecting to Voice...')
-    .setDescription(`Joining **${voiceChannel.name}** and initializing audio system...`)
-    .setColor(0xfbbf24); // Yellow for loading
-
-  await interaction.reply({ embeds: [loadingEmbed] });
-
-  try {
-    if (canListen) {
-      // Get the text channel for transcript posting
-      // Use the channel where the command was invoked
-      const textChannel = interaction.channel?.isTextBased() && !interaction.channel.isDMBased()
-        ? interaction.channel
-        : undefined;
-
-      // Start voice assistant (joins channel + starts listening + plays ready sound)
-      await voiceAssistant.startListening(voiceChannel, textChannel as any);
-
-      const embed = new EmbedBuilder()
-        .setTitle('🎧 Voice Assistant Active')
-        .setDescription(`Now listening in **${voiceChannel.name}**`)
-        .setColor(0x22c55e)
-        .addFields(
-          {
-            name: 'Wake Word',
-            value: '"Hey FumbleBot"',
-            inline: true,
-          },
-          {
-            name: 'Transcription',
-            value: textChannel
-              ? `Transcripts will be posted to <#${textChannel.id}>`
-              : 'No text channel for transcripts',
-            inline: true,
-          },
-          {
-            name: 'Example Commands',
-            value:
-              '• "Hey FumbleBot, roll d20"\n' +
-              '• "Hey FumbleBot, roll 2d6 plus 3"\n' +
-              '• "Hey FumbleBot, roll initiative"\n' +
-              '• "Hey FumbleBot, goodbye"',
-            inline: false,
-          }
-        )
-        .setFooter({ text: 'Say "Hey FumbleBot, goodbye" to stop listening' });
-
-      await interaction.editReply({ embeds: [embed] });
+    const sessionInfo = voiceAssistant.getSessionInfo(guildId);
+    if (sessionInfo?.mode === 'assistant') {
+      await interaction.reply({
+        content: 'Voice assistant is already active. Use `/voice end` to stop.',
+        ephemeral: true,
+      });
     } else {
-      // Just join without listening (for non-admins or non-allowed guilds)
-      await voiceClient.joinChannel(voiceChannel);
-
-      await interaction.editReply({
-        content: `🎙️ Joined **${voiceChannel.name}**\n\n` +
-          `*Voice assistant is currently in beta and only available to admins in select servers.*`,
+      await interaction.reply({
+        content: 'Transcription is already active. Use `/voice end` to stop.',
+        ephemeral: true,
       });
     }
+    return;
+  }
+
+  // Show loading state
+  await interaction.deferReply();
+
+  try {
+    // Get the text channel for live subtitles
+    const textChannel = interaction.channel?.isTextBased() && !interaction.channel.isDMBased()
+      ? interaction.channel
+      : undefined;
+
+    // Start transcription-only mode
+    await voiceAssistant.startListening(voiceChannel, textChannel as any, {
+      mode: 'transcribe',
+      startedBy: userId,
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle('Transcription Started')
+      .setDescription(`Now transcribing in **${voiceChannel.name}**`)
+      .setColor(0x22c55e)
+      .addFields(
+        {
+          name: 'Mode',
+          value: 'Transcription only (no AI responses)',
+          inline: true,
+        },
+        {
+          name: 'Live Subtitles',
+          value: textChannel
+            ? `Posting to <#${textChannel.id}>`
+            : 'No text channel available',
+          inline: true,
+        }
+      )
+      .setFooter({ text: 'Use /voice assistant to enable AI, or /voice end to stop' });
+
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error('[Voice] Error joining channel:', error);
+    console.error('[Voice] Error starting transcription:', error);
     const errorEmbed = new EmbedBuilder()
-      .setTitle('❌ Failed to Join Voice')
+      .setTitle('Failed to Start Transcription')
       .setDescription(`${error instanceof Error ? error.message : 'Unknown error'}`)
-      .setColor(0xef4444); // Red for error
+      .setColor(0xef4444);
     await interaction.editReply({ embeds: [errorEmbed] });
   }
 }
 
 /**
- * Leave voice channel
+ * /voice assistant - Join voice channel with AI assistant (or upgrade from transcribe)
  */
-async function handleLeave(interaction: ChatInputCommandInteraction) {
+async function handleAssistant(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId!;
+  const userId = interaction.user.id;
+  const member = interaction.member as GuildMember;
+  const voiceChannel = member.voice.channel;
 
-  if (!voiceClient.isConnected(guildId)) {
+  // Admin check
+  if (!isAdmin(userId)) {
     await interaction.reply({
-      content: '❌ Not in a voice channel.',
+      content: 'This command is only available to server admins.',
       ephemeral: true,
     });
     return;
   }
 
-  try {
-    // Stop listening if active
-    if (voiceAssistant.isActive(guildId)) {
-      await voiceAssistant.stopListening(guildId);
+  if (!voiceChannel) {
+    await interaction.reply({
+      content: 'You need to be in a voice channel first!',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (
+    voiceChannel.type !== ChannelType.GuildVoice &&
+    voiceChannel.type !== ChannelType.GuildStageVoice
+  ) {
+    await interaction.reply({
+      content: 'Cannot join this type of channel.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Check if already active
+  if (voiceAssistant.isActive(guildId)) {
+    const sessionInfo = voiceAssistant.getSessionInfo(guildId);
+    if (sessionInfo?.mode === 'assistant') {
+      await interaction.reply({
+        content: 'Voice assistant is already active. Use `/voice end` to stop.',
+        ephemeral: true,
+      });
+      return;
     }
 
-    await voiceClient.leaveChannel(guildId);
+    // Upgrade from transcribe to assistant
+    voiceAssistant.enableAssistantMode(guildId, userId);
 
-    await interaction.reply({
-      content: '👋 Left voice channel',
-      ephemeral: false,
-    });
-  } catch (error) {
-    console.error('[Voice] Error leaving channel:', error);
-    await interaction.reply({
-      content: `❌ Failed to leave voice channel: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      ephemeral: true,
-    });
-  }
-}
+    const embed = new EmbedBuilder()
+      .setTitle('Assistant Mode Enabled')
+      .setDescription('FumbleBot now responds to wake words.')
+      .setColor(0x7c3aed)
+      .addFields(
+        {
+          name: 'Wake Word',
+          value: '"Hey FumbleBot"',
+          inline: true,
+        },
+        {
+          name: 'Example Commands',
+          value:
+            '- "Hey FumbleBot, roll d20"\n' +
+            '- "Hey FumbleBot, roll initiative"\n' +
+            '- "Hey FumbleBot, what is grappling?"',
+          inline: false,
+        }
+      )
+      .setFooter({ text: 'Use /voice end to stop' });
 
-/**
- * Check voice status
- */
-async function handleStatus(interaction: ChatInputCommandInteraction) {
-  const guildId = interaction.guildId!;
-
-  if (!voiceClient.isConnected(guildId)) {
-    await interaction.reply({
-      content: '📊 **Voice Status**: Not connected',
-      ephemeral: true,
-    });
+    await interaction.reply({ embeds: [embed] });
     return;
   }
 
-  const channelId = voiceClient.getCurrentChannel(guildId);
-  const channel = channelId ? interaction.guild?.channels.cache.get(channelId) : null;
-  const isListening = voiceAssistant.isActive(guildId);
-  const isPaused = voiceAssistant.isPaused(guildId);
-
-  // Determine listening status display
-  let listeningStatus: string;
-  if (!isListening) {
-    listeningStatus = '⚫ Inactive';
-  } else if (isPaused) {
-    listeningStatus = '🟡 Paused (no users in channel)';
-  } else {
-    listeningStatus = '🟢 Active';
-  }
-
-  const embed = new EmbedBuilder()
-    .setTitle('📊 Voice Status')
-    .setColor(isPaused ? 0xfbbf24 : 0x7c3aed)
-    .addFields(
-      {
-        name: 'Connected',
-        value: channel ? `**${channel.name}**` : `<#${channelId}>`,
-        inline: true,
-      },
-      {
-        name: 'Wake Word Listening',
-        value: listeningStatus,
-        inline: true,
-      }
-    );
-
-  if (isListening && !isPaused) {
-    embed.addFields({
-      name: 'How to Use',
-      value: 'Say **"Hey FumbleBot"** followed by a command.\n' +
-        'Examples:\n' +
-        '• "Hey FumbleBot, roll d20"\n' +
-        '• "Hey FumbleBot, roll initiative"\n' +
-        '• "Hey FumbleBot, goodbye" (to stop listening)',
-      inline: false,
-    });
-  } else if (isPaused) {
-    embed.addFields({
-      name: 'Auto-Resume',
-      value: 'Listening will automatically resume when someone joins the voice channel.',
-      inline: false,
-    });
-  }
-
-  await interaction.reply({
-    embeds: [embed],
-    ephemeral: true,
-  });
-}
-
-/**
- * Play sound effect from RPG assets
- */
-async function handlePlay(interaction: ChatInputCommandInteraction) {
-  const guildId = interaction.guildId!;
-  const assetIdOrName = interaction.options.getString('asset', true);
-  const volume = interaction.options.getNumber('volume') ?? 0.5;
-
-  // Check if connected
-  if (!voiceClient.isConnected(guildId)) {
-    await interaction.reply({
-      content: '❌ Not in a voice channel. Use `/voice join` first.',
-      ephemeral: true,
-    });
-    return;
-  }
-
+  // Show loading state
   await interaction.deferReply();
 
   try {
-    // TODO: Lookup asset from database
-    await interaction.editReply({
-      content:
-        `🎵 **Sound Effect Playback** (Coming Soon)\n\n` +
-        `Asset: \`${assetIdOrName}\`\n` +
-        `Volume: ${Math.round(volume * 100)}%\n\n` +
-        `*This feature will play sound effects from RPG assets tagged as "sound" in voice channels.*`,
+    // Get the text channel for live subtitles
+    const textChannel = interaction.channel?.isTextBased() && !interaction.channel.isDMBased()
+      ? interaction.channel
+      : undefined;
+
+    // Start full assistant mode
+    await voiceAssistant.startListening(voiceChannel, textChannel as any, {
+      mode: 'assistant',
+      startedBy: userId,
     });
+
+    const embed = new EmbedBuilder()
+      .setTitle('Voice Assistant Active')
+      .setDescription(`Now listening in **${voiceChannel.name}**`)
+      .setColor(0x7c3aed)
+      .addFields(
+        {
+          name: 'Wake Word',
+          value: '"Hey FumbleBot"',
+          inline: true,
+        },
+        {
+          name: 'Transcription',
+          value: textChannel
+            ? `Live subtitles in <#${textChannel.id}>`
+            : 'No text channel for subtitles',
+          inline: true,
+        },
+        {
+          name: 'Example Commands',
+          value:
+            '- "Hey FumbleBot, roll d20"\n' +
+            '- "Hey FumbleBot, roll 2d6 plus 3"\n' +
+            '- "Hey FumbleBot, roll initiative"\n' +
+            '- "Hey FumbleBot, what is grappling?"',
+          inline: false,
+        }
+      )
+      .setFooter({ text: 'Use /voice end to stop and receive transcript' });
+
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error('[Voice] Error playing sound:', error);
-    await interaction.editReply({
-      content: `❌ Failed to play sound: ${error instanceof Error ? error.message : 'Unknown error'}`,
-    });
+    console.error('[Voice] Error starting assistant:', error);
+    const errorEmbed = new EmbedBuilder()
+      .setTitle('Failed to Start Assistant')
+      .setDescription(`${error instanceof Error ? error.message : 'Unknown error'}`)
+      .setColor(0xef4444);
+    await interaction.editReply({ embeds: [errorEmbed] });
   }
 }
 
 /**
- * Stop current playback
+ * /voice end - End voice session and DM transcript to admin
  */
-async function handleStop(interaction: ChatInputCommandInteraction) {
+async function handleEnd(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId!;
+  const userId = interaction.user.id;
 
-  if (!voiceClient.isConnected(guildId)) {
+  // Admin check
+  if (!isAdmin(userId)) {
     await interaction.reply({
-      content: '❌ Not in a voice channel.',
+      content: 'This command is only available to server admins.',
       ephemeral: true,
     });
     return;
   }
 
-  try {
-    voiceClient.stop(guildId);
-
+  // Check if connected
+  if (!voiceAssistant.isActive(guildId)) {
     await interaction.reply({
-      content: '⏹️ Stopped playback',
-      ephemeral: false,
+      content: 'No voice session is active.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Defer reply since DM and stop might take a moment
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    // DM transcript to the admin who ran /voice end
+    const transcript = voiceAssistant.getTranscript(guildId);
+    if (transcript && transcript.entries.length > 0) {
+      await voiceAssistant.dmSessionTranscript(userId, guildId);
+    }
+
+    // Stop the session
+    await voiceAssistant.stopListening(guildId);
+    await voiceClient.leaveChannel(guildId);
+
+    await interaction.editReply({
+      content: 'Session ended. Transcript sent to your DMs.',
     });
   } catch (error) {
-    console.error('[Voice] Error stopping playback:', error);
-    await interaction.reply({
-      content: `❌ Failed to stop playback: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      ephemeral: true,
+    console.error('[Voice] Error ending session:', error);
+    await interaction.editReply({
+      content: `Failed to end session: ${error instanceof Error ? error.message : 'Unknown error'}`,
     });
   }
 }
 
-/**
- * Autocomplete handler for asset selection
- */
-export async function handleVoiceAutocomplete(interaction: any) {
-  const focusedValue = interaction.options.getFocused();
-
-  // STUB: Return example assets
-  const choices = [
-    { name: 'Sword Swing', value: 'asset-sword-swing' },
-    { name: 'Magic Spell Cast', value: 'asset-magic-cast' },
-    { name: 'Door Creak', value: 'asset-door-creak' },
-    { name: 'Footsteps', value: 'asset-footsteps' },
-    { name: 'Thunder Clap', value: 'asset-thunder' },
-  ].filter((choice) => choice.name.toLowerCase().includes(focusedValue.toLowerCase()));
-
-  await interaction.respond(
-    choices.slice(0, 25).map((choice) => ({
-      name: choice.name,
-      value: choice.value,
-    }))
-  );
-}
+// voiceHandler is the CommandHandler, voiceCommands contains the slash command definitions

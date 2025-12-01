@@ -142,6 +142,10 @@ interface GuildVoiceState {
   transcriptionProvider: 'deepgram' | 'whisper';
   /** Which TTS provider is being used */
   ttsProvider: 'deepgram' | 'openai';
+  /** Session mode: transcribe-only or full assistant */
+  mode: 'transcribe' | 'assistant';
+  /** Discord user ID of admin who started the session */
+  startedBy: string;
 }
 
 // Default whisper prompt for wake word detection
@@ -671,9 +675,18 @@ Provide a concise answer (1-3 sentences). If asking about a name/NPC/item, give 
     source: 'deepgram' | 'whisper'
   ): Promise<void> {
     const channelId = voiceClient.getCurrentChannel(guildId);
+    const state = this.activeGuilds.get(guildId);
 
     if (!channelId) {
       console.warn(`[VoiceAssistant] Wake word detected (${source}) but no channel found`);
+      return;
+    }
+
+    // In transcribe-only mode, don't process AI commands
+    if (state?.mode === 'transcribe') {
+      console.log(`[VoiceAssistant] Transcribe-only mode, ignoring wake word command: "${command}"`);
+      // Still record it in transcript
+      await this.addTranscriptionEntry(guildId, userId, `Hey FumbleBot, ${command}`, true);
       return;
     }
 
@@ -1028,8 +1041,16 @@ Question: ${request}`,
 
   /**
    * Start voice assistant in a channel
+   * @param channel Voice channel to join
+   * @param textChannel Text channel for live subtitles
+   * @param options Configuration options
    */
-  async startListening(channel: VoiceBasedChannel, textChannel?: TextChannel): Promise<void> {
+  async startListening(
+    channel: VoiceBasedChannel,
+    textChannel?: TextChannel,
+    options: { mode?: 'transcribe' | 'assistant'; startedBy?: string } = {}
+  ): Promise<void> {
+    const { mode = 'assistant', startedBy = '' } = options;
     const guildId = channel.guild.id;
 
     // Check if this is a test guild restriction
@@ -1122,6 +1143,8 @@ Question: ${request}`,
       subtitles,
       transcriptionProvider,
       ttsProvider,
+      mode,
+      startedBy,
     });
 
     // Only start listening if there are humans present
@@ -1137,7 +1160,7 @@ Question: ${request}`,
       await this.playReadySound(guildId);
     }
 
-    this.emit('started', { guildId, channelId: channel.id, paused: shouldPause, transcriptionProvider, ttsProvider });
+    this.emit('started', { guildId, channelId: channel.id, paused: shouldPause, transcriptionProvider, ttsProvider, mode });
   }
 
   /**
@@ -1577,6 +1600,127 @@ ${transcriptText.slice(0, 2000)}`,
   isPaused(guildId: string): boolean {
     const state = this.activeGuilds.get(guildId);
     return state?.isPaused ?? false;
+  }
+
+  /**
+   * Get session info for a guild
+   */
+  getSessionInfo(guildId: string): { mode: 'transcribe' | 'assistant'; startedBy: string } | null {
+    const state = this.activeGuilds.get(guildId);
+    if (!state) return null;
+    return { mode: state.mode, startedBy: state.startedBy };
+  }
+
+  /**
+   * Enable assistant mode (upgrade from transcribe-only)
+   */
+  enableAssistantMode(guildId: string, userId?: string): boolean {
+    const state = this.activeGuilds.get(guildId);
+    if (!state) return false;
+
+    state.mode = 'assistant';
+    if (userId) {
+      state.startedBy = userId;
+    }
+
+    console.log(`[VoiceAssistant] Upgraded to assistant mode in guild ${guildId}`);
+    this.emit('modeChanged', { guildId, mode: 'assistant' });
+    return true;
+  }
+
+  /**
+   * Get the transcript for a guild session
+   */
+  getTranscript(guildId: string): SessionTranscript | null {
+    const state = this.activeGuilds.get(guildId);
+    return state?.transcript ?? null;
+  }
+
+  /**
+   * DM session transcript to a user
+   */
+  async dmSessionTranscript(userId: string, guildId: string): Promise<void> {
+    const state = this.activeGuilds.get(guildId);
+    if (!state || !this.discordClient) {
+      console.warn('[VoiceAssistant] Cannot DM transcript: no state or client');
+      return;
+    }
+
+    // Finalize transcript
+    state.transcript.endTime = Date.now();
+
+    try {
+      const user = await this.discordClient.users.fetch(userId);
+
+      // Calculate stats
+      const duration = state.transcript.endTime - state.transcript.startTime;
+      const minutes = Math.floor(duration / 60000);
+      const seconds = Math.floor((duration % 60000) / 1000);
+      const uniqueSpeakers = new Set(state.transcript.entries.map(e => e.userId)).size;
+      const commandCount = state.transcript.entries.filter(e => e.isCommand).length;
+
+      // Generate AI summary if there's enough content
+      let aiSummary = '';
+      if (state.transcript.entries.length >= 3) {
+        try {
+          const transcriptText = state.transcript.entries
+            .map(e => `${e.username}: ${e.text}`)
+            .join('\n');
+
+          const summaryResult = await this.aiService.lookup(
+            `Summarize this TTRPG voice session in 2-3 sentences. Focus on what was discussed/accomplished. Mention any dice rolls or rules questions asked.
+
+Transcript:
+${transcriptText.slice(0, 2000)}`,
+            'You are FumbleBot summarizing a D&D session. Be concise and helpful.',
+            { maxTokens: 150 }
+          );
+          aiSummary = summaryResult.content;
+        } catch (error) {
+          console.error('[VoiceAssistant] Failed to generate AI summary:', error);
+        }
+      }
+
+      // Generate markdown transcript
+      const markdown = this.generateTranscriptMarkdown(state.transcript);
+
+      // Create filename with date
+      const date = new Date(state.transcript.startTime);
+      const dateStr = date.toISOString().split('T')[0];
+      const timeStr = date.toTimeString().split(' ')[0].replace(/:/g, '-');
+      const filename = `transcript-${state.transcript.channelName}-${dateStr}-${timeStr}.md`;
+
+      // Create attachment
+      const attachment = new AttachmentBuilder(Buffer.from(markdown, 'utf-8'), {
+        name: filename,
+        description: `Voice session transcript from ${state.transcript.channelName}`,
+      });
+
+      // Create summary embed
+      const embed = new EmbedBuilder()
+        .setTitle('Voice Session Transcript')
+        .setColor(0x22c55e)
+        .addFields(
+          { name: 'Channel', value: state.transcript.channelName, inline: true },
+          { name: 'Duration', value: `${minutes}m ${seconds}s`, inline: true },
+          { name: 'Speakers', value: `${uniqueSpeakers}`, inline: true },
+          { name: 'Entries', value: `${state.transcript.entries.length}`, inline: true },
+          { name: 'Commands', value: `${commandCount}`, inline: true },
+        )
+        .setFooter({ text: `Full transcript attached as ${filename}` })
+        .setTimestamp();
+
+      // Add AI summary if available
+      if (aiSummary) {
+        embed.setDescription(`**Session Summary:**\n${aiSummary}`);
+      }
+
+      await user.send({ embeds: [embed], files: [attachment] });
+      console.log(`[VoiceAssistant] DM'd transcript to user ${userId}`);
+    } catch (error) {
+      console.error('[VoiceAssistant] Failed to DM transcript:', error);
+      throw error;
+    }
   }
 
   /**
