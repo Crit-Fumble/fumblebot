@@ -1,0 +1,81 @@
+{
+  "name": "@crit-fumble/fumblebot-browser-companion",
+  "version": "0.1.0",
+  "description": "FumbleBot Browser Companion - Connect TTRPG virtual tabletops to the Crit-Fumble platform",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./extension": {
+      "types": "./dist/extension/index.d.ts",
+      "import": "./dist/extension/index.js"
+    },
+    "./styles": {
+      "import": "./dist/styles.css"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "webpack --watch --mode development",
+    "build": "webpack --mode production",
+    "build:lib": "tsc -b && webpack --mode production",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run build:lib"
+  },
+  "keywords": [
+    "chrome-extension",
+    "browser-extension",
+    "roll20",
+    "dndbeyond",
+    "ttrpg",
+    "vtt",
+    "fumblebot",
+    "crit-fumble",
+    "discord"
+  ],
+  "author": "Crit-Fumble Gaming",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Crit-Fumble/fumblebot.git",
+    "directory": "packages/fumblebot-browser-companion"
+  },
+  "homepage": "https://fumblebot.crit-fumble.com",
+  "bugs": {
+    "url": "https://github.com/Crit-Fumble/fumblebot/issues"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@crit-fumble/react": "^19.8.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.19",
+    "copy-webpack-plugin": "^12.0.2",
+    "css-loader": "^7.1.2",
+    "mini-css-extract-plugin": "^2.9.2",
+    "postcss": "^8.4.39",
+    "postcss-loader": "^8.1.1",
+    "rimraf": "^5.0.5",
+    "style-loader": "^4.0.0",
+    "tailwindcss": "^3.4.4",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.5.3",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

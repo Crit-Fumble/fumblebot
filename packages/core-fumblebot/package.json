@@ -1,0 +1,59 @@
+{
+  "name": "@crit-fumble/core-fumblebot",
+  "version": "0.1.0",
+  "description": "FumbleBot SDK for Core server integration - types, client, and utilities",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "docs"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "fumblebot",
+    "crit-fumble",
+    "sdk",
+    "ttrpg",
+    "discord",
+    "dice",
+    "ai"
+  ],
+  "author": "Crit-Fumble Gaming",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Crit-Fumble/fumblebot.git",
+    "directory": "packages/core-fumblebot"
+  },
+  "homepage": "https://fumblebot.crit-fumble.com",
+  "bugs": {
+    "url": "https://github.com/Crit-Fumble/fumblebot/issues"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.5",
+    "typescript": "^5.5.3"
+  }
+}

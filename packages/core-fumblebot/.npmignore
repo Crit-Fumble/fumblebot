@@ -1,0 +1,36 @@
+# Source files (published package uses dist/)
+src/
+
+# TypeScript config
+tsconfig.json
+tsconfig.*.json
+
+# Development files
+.env*
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test files
+__tests__/
+*.test.ts
+*.spec.ts
+coverage/
+.nyc_output/
+
+# Security - never publish these
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials/
+.secrets*
+
+# Build artifacts
+node_modules/
+.turbo/
