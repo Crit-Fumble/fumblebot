@@ -473,14 +473,16 @@ export function setupActivityProxy(app: Application): void {
   const activityProxy = createProxyMiddleware({
     target: coreUrl,
     changeOrigin: true,
-    // Rewrite /.proxy/activity/* to /activity/*
-    pathRewrite: { '^/\\.proxy/activity': '/activity' },
+    // app.use('/.proxy/activity') strips the mount path, so req.url is already relative
+    // We need to prepend /activity to route to Core's /activity/*
+    pathRewrite: (path) => `/activity${path}`,
     // Logging
     logger: debug ? console : undefined,
     on: {
       proxyReq: (proxyReq, req) => {
+        const targetPath = `/activity${req.url}`;
         if (debug) {
-          console.log(`[ActivityProxy] ${req.method} ${req.url} -> ${coreUrl}${req.url?.replace(/^\/\.proxy\/activity/, '/activity')}`);
+          console.log(`[ActivityProxy] ${req.method} ${req.url} -> ${coreUrl}${targetPath}`);
         }
         // Forward original host
         proxyReq.setHeader('X-Forwarded-Host', req.headers.host || '');
