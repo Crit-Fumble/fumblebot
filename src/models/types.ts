@@ -60,6 +60,57 @@ export interface APIConfig {
   botApiSecret?: string;
 }
 
+/**
+ * Core server proxy configuration
+ * For service-to-service communication with core.crit-fumble.com
+ */
+export interface CoreProxyConfig {
+  /** Core server URL (internal VPC IP, e.g., http://10.x.x.x) */
+  url: string;
+  /** Core server port (default: 4000) */
+  port: number;
+  /** Shared secret for service-to-service auth */
+  secret: string;
+}
+
+/**
+ * Voice/audio service configuration
+ */
+export interface VoiceConfig {
+  /** Deepgram API key for speech-to-text and TTS */
+  deepgramApiKey?: string;
+  /** Test guild ID for voice feature development */
+  testGuildId?: string;
+}
+
+/**
+ * Security/session configuration
+ */
+export interface SecurityConfig {
+  /** Session secret for Express sessions */
+  sessionSecret: string;
+  /** Auth secret (for Auth.js/NextAuth compatibility) */
+  authSecret: string;
+  /** Admin Discord user IDs (comma-separated in env, parsed to array) */
+  adminIds: string[];
+}
+
+/**
+ * Platform server configuration
+ */
+export interface ServerConfig {
+  /** Server port (default: 3000) */
+  port: number;
+  /** Server host (default: 0.0.0.0) */
+  host: string;
+  /** Public URL for the server */
+  publicUrl: string;
+  /** Node environment */
+  nodeEnv: 'development' | 'production' | 'test';
+  /** Is production environment */
+  isProduction: boolean;
+}
+
 // =============================================================================
 // Discord Types
 // =============================================================================
