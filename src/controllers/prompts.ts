@@ -5,7 +5,7 @@
 
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { getPrisma } from '../services/db.js';
+import { getPrisma } from '../services/db/client.js';
 
 /**
  * Valid target types for prompt partials

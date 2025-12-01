@@ -6,7 +6,7 @@
  */
 
 import type { Request, Response } from 'express';
-import { getPrisma } from '../services/db.js';
+import { getPrisma } from '../services/db/client.js';
 
 /**
  * GET /api/admin/guilds/:guildId/metrics

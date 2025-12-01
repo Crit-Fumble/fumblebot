@@ -1,14 +1,16 @@
 /**
  * FumbleBot Database Client
- * Prisma client wrapper with guild-aware security model
+ *
+ * Unified Prisma client with:
+ * - SSL/TLS with CA certificate support for DigitalOcean VPC
+ * - Guild-aware security model
+ * - Hot reloading in development
  */
 
-// Import from the generated client location
-// Using import.meta.url to properly resolve relative to this module
-// This works from both src (dev with tsx) and dist (production) directories
 import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 import { dirname, join, resolve } from 'path'
+import { readFileSync, existsSync } from 'fs'
 import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
 
@@ -17,7 +19,6 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 // Navigate up to project root (from src/services/db or dist/services/db)
-// This goes up 3 levels: db -> services -> src/dist -> project root
 const projectRoot = resolve(__dirname, '..', '..', '..')
 const requireFromRoot = createRequire(join(projectRoot, 'package.json'))
 
@@ -25,20 +26,101 @@ const requireFromRoot = createRequire(join(projectRoot, 'package.json'))
 const prismaModule = requireFromRoot('.prisma/fumblebot')
 const PrismaClient = prismaModule.PrismaClient as new (options?: { adapter: PrismaPg }) => any
 
-// Parse connection string and remove sslmode (conflicts with pg's ssl option)
-const connectionUrl = new URL(process.env.FUMBLEBOT_DATABASE_URL || 'postgresql://localhost/fumblebot')
-connectionUrl.searchParams.delete('sslmode')
-const connectionString = connectionUrl.toString()
+// Re-export Prisma namespace for type access
+export const Prisma = prismaModule.Prisma
 
-// SSL configuration for DigitalOcean managed PostgreSQL
-// Note: DO managed databases use intermediate certs that don't validate with just the CA cert
-// Using rejectUnauthorized: false is acceptable for managed database connections
-const sslConfig = { rejectUnauthorized: false }
+// ===========================================
+// SSL/TLS Configuration
+// ===========================================
+
+/**
+ * Load CA certificate from file path or environment variable.
+ * Returns the certificate content or undefined if not available.
+ */
+function loadCaCertificate(): string | undefined {
+  // Check for CA cert path in environment
+  const certPath = process.env.DATABASE_CA_CERT
+
+  if (!certPath) {
+    return undefined
+  }
+
+  // Resolve relative paths from project root
+  const resolvedPath = resolve(projectRoot, certPath)
+
+  if (!existsSync(resolvedPath)) {
+    console.warn(`[DB] CA certificate not found at: ${resolvedPath}`)
+    return undefined
+  }
+
+  try {
+    const cert = readFileSync(resolvedPath, 'utf-8')
+    console.log(`[DB] Loaded CA certificate from: ${resolvedPath}`)
+    return cert
+  } catch (error) {
+    console.error(`[DB] Failed to read CA certificate:`, error)
+    return undefined
+  }
+}
+
+/**
+ * Build SSL configuration for pg Pool.
+ * - If CA cert is available: use it with rejectUnauthorized: true
+ * - If no CA cert but SSL required: use rejectUnauthorized: false (managed DB fallback)
+ * - If local/no SSL: undefined
+ */
+function buildSslConfig(): pg.PoolConfig['ssl'] {
+  const caCert = loadCaCertificate()
+  const connectionUrl = process.env.FUMBLEBOT_DATABASE_URL || ''
+  const requiresSsl = connectionUrl.includes('sslmode=require') ||
+                      connectionUrl.includes('digitalocean.com')
+
+  if (caCert) {
+    // Best case: proper SSL with CA certificate verification
+    console.log('[DB] SSL enabled with CA certificate verification')
+    return {
+      ca: caCert,
+      rejectUnauthorized: true,
+    }
+  }
+
+  if (requiresSsl) {
+    // Fallback: SSL without certificate verification (DigitalOcean managed DB)
+    // This is less secure but necessary when CA cert isn't configured
+    console.warn('[DB] SSL enabled WITHOUT certificate verification (set DATABASE_CA_CERT for secure connection)')
+    return {
+      rejectUnauthorized: false,
+    }
+  }
+
+  // Local development without SSL
+  return undefined
+}
+
+// ===========================================
+// Connection Setup
+// ===========================================
+
+// Parse connection string and remove sslmode (conflicts with pg's ssl option)
+const rawConnectionUrl = process.env.FUMBLEBOT_DATABASE_URL || 'postgresql://localhost/fumblebot'
+let connectionString = rawConnectionUrl
+
+try {
+  const connectionUrl = new URL(rawConnectionUrl)
+  connectionUrl.searchParams.delete('sslmode')
+  connectionString = connectionUrl.toString()
+} catch {
+  // If URL parsing fails, use as-is (might be a simple connection string)
+  console.warn('[DB] Could not parse connection URL, using as-is')
+}
+
+// Build SSL config
+const sslConfig = buildSslConfig()
 
 // Create a pg Pool with proper SSL configuration
 const pool = new pg.Pool({
   connectionString,
-  ssl: sslConfig
+  ssl: sslConfig,
 })
 
 // Create the PostgreSQL adapter using the pool
@@ -47,11 +129,16 @@ const adapter = new PrismaPg({ pool })
 // Type the global for hot reloading in development
 const globalForPrisma = globalThis as unknown as { prisma: InstanceType<typeof PrismaClient> | undefined }
 
+// Export singleton Prisma client
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter })
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma
 }
+
+// ===========================================
+// DatabaseService - Guild-aware operations
+// ===========================================
 
 /**
  * Database service with guild security model
@@ -253,4 +340,33 @@ export class DatabaseService {
   }
 }
 
+// Export singleton DatabaseService instance
 export const db = DatabaseService.getInstance()
+
+// ===========================================
+// Compatibility exports for old db.ts users
+// ===========================================
+
+/**
+ * Get the singleton Prisma client instance.
+ * @deprecated Use `prisma` directly instead
+ */
+export function getPrisma() {
+  return prisma
+}
+
+// Re-export all generated types
+export type {
+  Guild,
+  GuildMember,
+  DiceRoll,
+  Session,
+  BotCommand,
+  AuthUser,
+  AuthSession,
+  AuthAccount,
+  ExpressSession,
+  PromptPartial,
+  PromptTargetType,
+  CachedRule,
+} from '.prisma/fumblebot'
