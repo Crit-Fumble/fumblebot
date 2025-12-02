@@ -313,13 +313,25 @@ export const routes: Record<string, RouteDefinition[]> = {
       method: 'post',
       path: '/api/voice/listen/start',
       handler: 'handleVoiceListenStart',
-      description: 'Start wake word listening',
+      description: 'Start voice transcription/assistant (with mode: transcribe|assistant)',
     },
     {
       method: 'post',
       path: '/api/voice/listen/stop',
       handler: 'handleVoiceListenStop',
-      description: 'Stop wake word listening',
+      description: 'Stop voice transcription/assistant',
+    },
+    {
+      method: 'get',
+      path: '/api/voice/transcript/:guildId',
+      handler: 'handleVoiceTranscript',
+      description: 'Get transcript for an active session',
+    },
+    {
+      method: 'post',
+      path: '/api/voice/mode',
+      handler: 'handleVoiceMode',
+      description: 'Change voice mode (transcribe -> assistant)',
     },
   ],
 };

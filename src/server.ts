@@ -73,6 +73,8 @@ import {
   handleVoiceStop,
   handleVoiceListenStart,
   handleVoiceListenStop,
+  handleVoiceTranscript,
+  handleVoiceMode,
   validateVoiceSecret,
 } from './controllers/voice.js';
 import {
@@ -365,6 +367,8 @@ export class PlatformServer {
       handleVoiceStop: (req, res) => handleVoiceStop(req, res),
       handleVoiceListenStart: (req, res) => handleVoiceListenStart(req, res),
       handleVoiceListenStop: (req, res) => handleVoiceListenStop(req, res),
+      handleVoiceTranscript: (req, res) => handleVoiceTranscript(req, res),
+      handleVoiceMode: (req, res) => handleVoiceMode(req, res),
     };
 
     return handlers[name] || null;

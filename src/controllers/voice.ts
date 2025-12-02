@@ -46,12 +46,15 @@ export async function handleVoiceStatus(req: Request, res: Response): Promise<vo
     const isConnected = voiceClient.isConnected(guildId)
     const channelId = voiceClient.getCurrentChannel(guildId)
     const isListening = voiceAssistant.isActive(guildId)
+    const sessionInfo = voiceAssistant.getSessionInfo(guildId)
 
     res.json({
       guildId,
       connected: isConnected,
       channelId: channelId || null,
       listening: isListening,
+      mode: sessionInfo?.mode || null,
+      startedBy: sessionInfo?.startedBy || null,
     })
   } catch (error) {
     console.error('[Voice API] Error getting status:', error)
@@ -71,11 +74,16 @@ export async function handleVoiceSessions(req: Request, res: Response): Promise<
     const sessions = voiceClient.getActiveSessions()
 
     res.json({
-      sessions: sessions.map((session) => ({
-        guildId: session.guildId,
-        channelId: session.channelId,
-        listening: voiceAssistant.isActive(session.guildId),
-      })),
+      sessions: sessions.map((session) => {
+        const sessionInfo = voiceAssistant.getSessionInfo(session.guildId)
+        return {
+          guildId: session.guildId,
+          channelId: session.channelId,
+          listening: voiceAssistant.isActive(session.guildId),
+          mode: sessionInfo?.mode || null,
+          startedBy: sessionInfo?.startedBy || null,
+        }
+      }),
       count: sessions.length,
     })
   } catch (error) {
@@ -260,14 +268,20 @@ export async function handleVoiceStop(req: Request, res: Response): Promise<void
  * POST /api/voice/listen/start
  * Start listening for wake word in a voice channel
  *
- * Body: { guildId: string, channelId: string }
+ * Body: { guildId: string, channelId: string, mode?: 'transcribe' | 'assistant', startedBy?: string }
  */
 export async function handleVoiceListenStart(req: Request, res: Response): Promise<void> {
   try {
-    const { guildId, channelId } = req.body
+    const { guildId, channelId, mode, startedBy } = req.body
 
     if (!guildId || !channelId) {
       res.status(400).json({ error: 'guildId and channelId are required' })
+      return
+    }
+
+    // Validate mode if provided
+    if (mode && mode !== 'transcribe' && mode !== 'assistant') {
+      res.status(400).json({ error: 'mode must be either "transcribe" or "assistant"' })
       return
     }
 
@@ -295,14 +309,18 @@ export async function handleVoiceListenStart(req: Request, res: Response): Promi
       return
     }
 
-    // Start listening (this will also join the channel if not already connected)
-    await voiceAssistant.startListening(channel)
+    // Start listening with mode and startedBy options
+    await voiceAssistant.startListening(channel, undefined, {
+      mode: mode || 'assistant',
+      startedBy: startedBy || 'api',
+    })
 
     res.json({
       success: true,
       guildId,
       channelId,
       listening: true,
+      mode: mode || 'assistant',
     })
   } catch (error) {
     console.error('[Voice API] Error starting listener:', error)
@@ -344,6 +362,108 @@ export async function handleVoiceListenStop(req: Request, res: Response): Promis
     console.error('[Voice API] Error stopping listener:', error)
     res.status(500).json({
       error: 'Failed to stop voice listener',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+}
+
+/**
+ * GET /api/voice/transcript/:guildId
+ * Get the current transcript for a voice session
+ */
+export async function handleVoiceTranscript(req: Request, res: Response): Promise<void> {
+  try {
+    const { guildId } = req.params
+
+    if (!guildId) {
+      res.status(400).json({ error: 'guildId parameter is required' })
+      return
+    }
+
+    const transcript = voiceAssistant.getTranscript(guildId)
+
+    if (!transcript) {
+      res.status(404).json({ error: 'No transcript found for this guild' })
+      return
+    }
+
+    res.json({
+      guildId,
+      transcript,
+    })
+  } catch (error) {
+    console.error('[Voice API] Error getting transcript:', error)
+    res.status(500).json({
+      error: 'Failed to get transcript',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+}
+
+/**
+ * POST /api/voice/mode
+ * Change the voice mode between transcribe and assistant
+ *
+ * Body: { guildId: string, mode: 'transcribe' | 'assistant' }
+ */
+export async function handleVoiceMode(req: Request, res: Response): Promise<void> {
+  try {
+    const { guildId, mode } = req.body
+
+    if (!guildId) {
+      res.status(400).json({ error: 'guildId is required' })
+      return
+    }
+
+    if (!mode || (mode !== 'transcribe' && mode !== 'assistant')) {
+      res.status(400).json({ error: 'mode must be either "transcribe" or "assistant"' })
+      return
+    }
+
+    if (!voiceAssistant.isActive(guildId)) {
+      res.status(400).json({ error: 'No active voice session in this guild' })
+      return
+    }
+
+    const sessionInfo = voiceAssistant.getSessionInfo(guildId)
+
+    // If already in requested mode, return success
+    if (sessionInfo?.mode === mode) {
+      res.json({
+        success: true,
+        guildId,
+        mode,
+        message: `Already in ${mode} mode`,
+      })
+      return
+    }
+
+    // Enable assistant mode (transcribe -> assistant)
+    if (mode === 'assistant') {
+      const enabled = voiceAssistant.enableAssistantMode(guildId)
+      if (!enabled) {
+        res.status(400).json({ error: 'Failed to enable assistant mode' })
+        return
+      }
+    } else {
+      // To downgrade from assistant to transcribe, we'd need to add a method to voiceAssistant
+      // For now, return an error asking to restart the session
+      res.status(400).json({
+        error: 'Cannot downgrade from assistant to transcribe mode. Stop and restart the session instead.',
+      })
+      return
+    }
+
+    res.json({
+      success: true,
+      guildId,
+      mode,
+      message: `Switched to ${mode} mode`,
+    })
+  } catch (error) {
+    console.error('[Voice API] Error changing mode:', error)
+    res.status(500).json({
+      error: 'Failed to change voice mode',
       message: error instanceof Error ? error.message : 'Unknown error',
     })
   }
