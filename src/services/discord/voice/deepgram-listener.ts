@@ -74,6 +74,8 @@ export interface UserStreamState {
   isActive: boolean;
   lastTranscript: string;
   lastTranscriptTime: number;
+  preBuffer: Buffer[]; // Rolling buffer of last ~500ms of audio
+  preBufferSent: boolean; // Track if we've sent the pre-buffer for this utterance
 }
 
 export class DeepgramListener extends EventEmitter {
@@ -158,9 +160,10 @@ export class DeepgramListener extends EventEmitter {
 
     let state = this.userStates.get(userId);
 
-    // If we have an active stream, just mark it active
+    // If we have an active stream, just mark it active and reset pre-buffer flag
     if (state?.deepgramClient && state?.audioStream) {
       state.isActive = true;
+      state.preBufferSent = false; // Reset for new utterance
       console.log(`[DeepgramListener] User ${userId} resumed speaking`);
       return;
     }
@@ -180,6 +183,8 @@ export class DeepgramListener extends EventEmitter {
       isActive: true,
       lastTranscript: '',
       lastTranscriptTime: Date.now(),
+      preBuffer: [],
+      preBufferSent: false,
     };
     this.userStates.set(userId, state);
 
@@ -291,7 +296,7 @@ export class DeepgramListener extends EventEmitter {
 
     decoder.on('data', (chunk: Buffer) => {
       const currentState = this.userStates.get(userId);
-      if (!currentState?.isActive || !currentState.deepgramClient) return;
+      if (!currentState) return;
 
       // Accumulate PCM data
       pcmBuffer = Buffer.concat([pcmBuffer, chunk]);
@@ -306,15 +311,39 @@ export class DeepgramListener extends EventEmitter {
         // Downsample from 48kHz stereo to 16kHz mono
         const downsampled = this.downsampleAudio(toProcess);
 
-        // Send to Deepgram (convert Buffer to ArrayBuffer for SDK compatibility)
-        try {
-          const arrayBuffer = downsampled.buffer.slice(
-            downsampled.byteOffset,
-            downsampled.byteOffset + downsampled.byteLength
-          );
-          currentState.deepgramClient.send(arrayBuffer);
-        } catch (err) {
-          console.error(`[DeepgramListener] Error sending audio:`, err);
+        // Always maintain a rolling pre-buffer (last ~500ms, about 5 chunks of 100ms each)
+        currentState.preBuffer.push(downsampled);
+        if (currentState.preBuffer.length > 5) {
+          currentState.preBuffer.shift(); // Remove oldest chunk
+        }
+
+        // If we have an active Deepgram connection, send audio
+        if (currentState.isActive && currentState.deepgramClient) {
+          try {
+            // On first send, flush the pre-buffer to capture audio from before speaking started
+            if (!currentState.preBufferSent && currentState.preBuffer.length > 0) {
+              console.log(`[DeepgramListener] Sending pre-buffer (${currentState.preBuffer.length} chunks, ~${currentState.preBuffer.length * 100}ms) for ${userId}`);
+              for (const bufferedChunk of currentState.preBuffer) {
+                const arrayBuffer = bufferedChunk.buffer.slice(
+                  bufferedChunk.byteOffset,
+                  bufferedChunk.byteOffset + bufferedChunk.byteLength
+                );
+                currentState.deepgramClient.send(arrayBuffer);
+              }
+              currentState.preBufferSent = true;
+              // Clear the buffer after sending to avoid duplicate sending
+              currentState.preBuffer = [downsampled]; // Keep only the current chunk
+            } else {
+              // Normal operation: send current chunk
+              const arrayBuffer = downsampled.buffer.slice(
+                downsampled.byteOffset,
+                downsampled.byteOffset + downsampled.byteLength
+              );
+              currentState.deepgramClient.send(arrayBuffer);
+            }
+          } catch (err) {
+            console.error(`[DeepgramListener] Error sending audio:`, err);
+          }
         }
       }
     });
