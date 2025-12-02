@@ -1,7 +1,6 @@
 #!/bin/bash
-# FumbleBot Quick Deploy Script
-# Builds locally and syncs dist + deps to production
-# Much faster than full git-based deploy
+# FumbleBot Unified Deploy Script
+# Builds locally, uploads to production, and restarts service
 #
 # Usage: npm run deploy
 #        FUMBLEBOT_SERVER=user@host FUMBLEBOT_DIR=/path npm run deploy
@@ -15,13 +14,11 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration - can be overridden with environment variables
-# Production server uses fumblebot user (non-root for security)
-# Systemd service runs as fumblebot user from /home/fumblebot/app
 SERVER="${FUMBLEBOT_SERVER:-fumblebot@fumblebot.crit-fumble.com}"
 REMOTE_DIR="${FUMBLEBOT_DIR:-/home/fumblebot/app}"
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BLUE}     FumbleBot Quick Deploy${NC}"
+echo -e "${BLUE}     FumbleBot Deploy${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "${BLUE}Server:${NC} $SERVER"
@@ -53,7 +50,6 @@ echo ""
 echo -e "${YELLOW}Step 2/5: Creating deployment package...${NC}"
 # Include node_modules to avoid memory-intensive npm install on small droplets
 # Use --exclude to skip devDependencies-only packages and build caches
-# Note: --exclude options must come BEFORE the files to include
 # Keep 'prisma' package - needed for prisma generate on server
 tar -czf /tmp/fumblebot-dist.tar.gz \
     --exclude='node_modules/.cache' \
@@ -116,6 +112,6 @@ if echo "$HEALTH" | grep -q "ok"; then
     echo "$HEALTH"
 else
     echo -e "${YELLOW}⚠ Health check inconclusive - service may still be starting${NC}"
-    echo "Check logs with: ssh $SERVER 'tail -50 $REMOTE_DIR/fumblebot.log'"
+    echo "Check logs with: ssh $SERVER 'journalctl -u fumblebot -n 50 -f'"
 fi
 echo ""
