@@ -60,7 +60,7 @@ private async kbSearch(coreClient: any, args: any) {
 **Required for KB access:**
 ```bash
 # Core server URL (internal VPC or localhost)
-CORE_SERVER_URL=http://10.116.0.5:4000
+CORE_SERVER_URL=http://<core-server-host>:4000
 
 # Core API secret for service-to-service auth
 CORE_SECRET=<your-core-secret>

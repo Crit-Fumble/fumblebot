@@ -84,14 +84,14 @@ For fully automatic deployments when you push to `main`:
 
 3. **Add webhook in GitHub:**
    - Go to repo Settings → Webhooks → Add webhook
-   - Payload URL: `http://159.203.126.144:9000/hooks/fumblebot-deploy`
+   - Payload URL: `http://<server-ip>:9000/hooks/fumblebot-deploy`
    - Content type: `application/json`
    - Secret: (use the generated secret)
    - Events: Just the push event
 
 4. **Open firewall port (if needed):**
    ```bash
-   ssh root@159.203.126.144 'ufw allow 9000/tcp'
+   ssh root@<server-host> 'ufw allow 9000/tcp'
    ```
 
 ### How It Works
@@ -121,9 +121,9 @@ Use this if Git-based deployment isn't working.
 
 ## Server Details
 
-- **IP:** 159.203.126.144
-- **User:** root
-- **App Directory:** /root/fumblebot
+- **Host:** fumblebot.crit-fumble.com
+- **User:** fumblebot
+- **App Directory:** /home/fumblebot/app
 - **Service:** fumblebot (systemd)
 - **Port:** 3000 (internal), 443 (HTTPS via nginx)
 
@@ -131,19 +131,19 @@ Use this if Git-based deployment isn't working.
 
 ```bash
 # Check service status
-ssh root@159.203.126.144 'systemctl status fumblebot'
+ssh fumblebot@fumblebot.crit-fumble.com 'systemctl status fumblebot'
 
 # View logs
-ssh root@159.203.126.144 'tail -100 /root/fumblebot/fumblebot.log'
+ssh fumblebot@fumblebot.crit-fumble.com 'journalctl -u fumblebot -n 100'
 
 # View deployment logs
-ssh root@159.203.126.144 'tail -100 /root/fumblebot/deploy.log'
+ssh fumblebot@fumblebot.crit-fumble.com 'journalctl -u fumblebot -n 100 | grep -i deploy'
 
 # Restart service manually
-ssh root@159.203.126.144 'systemctl restart fumblebot'
+ssh fumblebot@fumblebot.crit-fumble.com 'sudo systemctl restart fumblebot'
 
-# Check webhook service
-ssh root@159.203.126.144 'systemctl status fumblebot-webhook'
+# Check webhook service (if enabled)
+ssh fumblebot@fumblebot.crit-fumble.com 'systemctl status fumblebot-webhook'
 ```
 
 ## Troubleshooting

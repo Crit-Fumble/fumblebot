@@ -117,7 +117,7 @@ All responses now include:
 ### Already Configured
 
 ✅ **FUMBLEBOT_ADMIN_IDS** - Already set (4 admin users)
-✅ **CORE_SERVER_URL** - Set to `http://10.108.0.4` (Core VPC IP)
+✅ **CORE_SERVER_URL** - Set to Core server URL (internal VPC)
 ✅ **CORE_SECRET** - Configured for service-to-service auth
 ✅ **CORE_SERVER_PORT** - Set to `4000`
 
