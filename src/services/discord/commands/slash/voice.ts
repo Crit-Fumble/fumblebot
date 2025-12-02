@@ -30,6 +30,65 @@ function isAdmin(userId: string): boolean {
   return ADMIN_IDS.includes(userId);
 }
 
+/**
+ * Validation result for voice command preconditions
+ */
+interface ValidationResult {
+  valid: boolean;
+  error?: string;
+  voiceChannel?: import('discord.js').VoiceBasedChannel;
+}
+
+/**
+ * Validate common preconditions for voice commands
+ * Returns validation result with error message if invalid
+ */
+function validateVoiceCommand(interaction: ChatInputCommandInteraction): ValidationResult {
+  const userId = interaction.user.id;
+  const member = interaction.member as GuildMember;
+  const voiceChannel = member?.voice?.channel;
+
+  // Admin check
+  if (!isAdmin(userId)) {
+    return {
+      valid: false,
+      error: 'This command is only available to server admins.',
+    };
+  }
+
+  // Voice channel check
+  if (!voiceChannel) {
+    return {
+      valid: false,
+      error: 'You need to be in a voice channel first!',
+    };
+  }
+
+  // Channel type check
+  if (
+    voiceChannel.type !== ChannelType.GuildVoice &&
+    voiceChannel.type !== ChannelType.GuildStageVoice
+  ) {
+    return {
+      valid: false,
+      error: 'Cannot join this type of channel.',
+    };
+  }
+
+  return { valid: true, voiceChannel };
+}
+
+/**
+ * Get text channel for live subtitles (safely typed)
+ */
+function getTextChannel(interaction: ChatInputCommandInteraction): import('discord.js').TextChannel | undefined {
+  const channel = interaction.channel;
+  if (channel?.isTextBased() && !channel.isDMBased() && channel.isThread() === false) {
+    return channel as import('discord.js').TextChannel;
+  }
+  return undefined;
+}
+
 // Define slash commands
 export const voiceCommands = [
   new SlashCommandBuilder()
@@ -87,36 +146,18 @@ export async function voiceHandler(
 async function handleTranscribe(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId!;
   const userId = interaction.user.id;
-  const member = interaction.member as GuildMember;
-  const voiceChannel = member.voice.channel;
 
-  // Admin check
-  if (!isAdmin(userId)) {
+  // Validate preconditions
+  const validation = validateVoiceCommand(interaction);
+  if (!validation.valid) {
     await interaction.reply({
-      content: 'This command is only available to server admins.',
+      content: validation.error!,
       ephemeral: true,
     });
     return;
   }
 
-  if (!voiceChannel) {
-    await interaction.reply({
-      content: 'You need to be in a voice channel first!',
-      ephemeral: true,
-    });
-    return;
-  }
-
-  if (
-    voiceChannel.type !== ChannelType.GuildVoice &&
-    voiceChannel.type !== ChannelType.GuildStageVoice
-  ) {
-    await interaction.reply({
-      content: 'Cannot join this type of channel.',
-      ephemeral: true,
-    });
-    return;
-  }
+  const voiceChannel = validation.voiceChannel!;
 
   // Check if already active
   if (voiceAssistant.isActive(guildId)) {
@@ -140,12 +181,10 @@ async function handleTranscribe(interaction: ChatInputCommandInteraction) {
 
   try {
     // Get the text channel for live subtitles
-    const textChannel = interaction.channel?.isTextBased() && !interaction.channel.isDMBased()
-      ? interaction.channel
-      : undefined;
+    const textChannel = getTextChannel(interaction);
 
     // Start transcription-only mode
-    await voiceAssistant.startListening(voiceChannel, textChannel as any, {
+    await voiceAssistant.startListening(voiceChannel, textChannel, {
       mode: 'transcribe',
       startedBy: userId,
     });
@@ -172,11 +211,13 @@ async function handleTranscribe(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error('[Voice] Error starting transcription:', error);
+    console.error(`[Voice] Error starting transcription in ${voiceChannel.name} (${guildId}):`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorEmbed = new EmbedBuilder()
       .setTitle('Failed to Start Transcription')
-      .setDescription(`${error instanceof Error ? error.message : 'Unknown error'}`)
-      .setColor(0xef4444);
+      .setDescription(errorMessage)
+      .setColor(0xef4444)
+      .setFooter({ text: `Channel: ${voiceChannel.name} | Guild: ${guildId}` });
     await interaction.editReply({ embeds: [errorEmbed] });
   }
 }
@@ -187,36 +228,18 @@ async function handleTranscribe(interaction: ChatInputCommandInteraction) {
 async function handleAssistant(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId!;
   const userId = interaction.user.id;
-  const member = interaction.member as GuildMember;
-  const voiceChannel = member.voice.channel;
 
-  // Admin check
-  if (!isAdmin(userId)) {
+  // Validate preconditions
+  const validation = validateVoiceCommand(interaction);
+  if (!validation.valid) {
     await interaction.reply({
-      content: 'This command is only available to server admins.',
+      content: validation.error!,
       ephemeral: true,
     });
     return;
   }
 
-  if (!voiceChannel) {
-    await interaction.reply({
-      content: 'You need to be in a voice channel first!',
-      ephemeral: true,
-    });
-    return;
-  }
-
-  if (
-    voiceChannel.type !== ChannelType.GuildVoice &&
-    voiceChannel.type !== ChannelType.GuildStageVoice
-  ) {
-    await interaction.reply({
-      content: 'Cannot join this type of channel.',
-      ephemeral: true,
-    });
-    return;
-  }
+  const voiceChannel = validation.voiceChannel!;
 
   // Check if already active
   if (voiceAssistant.isActive(guildId)) {
@@ -262,12 +285,10 @@ async function handleAssistant(interaction: ChatInputCommandInteraction) {
 
   try {
     // Get the text channel for live subtitles
-    const textChannel = interaction.channel?.isTextBased() && !interaction.channel.isDMBased()
-      ? interaction.channel
-      : undefined;
+    const textChannel = getTextChannel(interaction);
 
     // Start full assistant mode
-    await voiceAssistant.startListening(voiceChannel, textChannel as any, {
+    await voiceAssistant.startListening(voiceChannel, textChannel, {
       mode: 'assistant',
       startedBy: userId,
     });
@@ -303,11 +324,13 @@ async function handleAssistant(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error('[Voice] Error starting assistant:', error);
+    console.error(`[Voice] Error starting assistant in ${voiceChannel.name} (${guildId}):`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorEmbed = new EmbedBuilder()
       .setTitle('Failed to Start Assistant')
-      .setDescription(`${error instanceof Error ? error.message : 'Unknown error'}`)
-      .setColor(0xef4444);
+      .setDescription(errorMessage)
+      .setColor(0xef4444)
+      .setFooter({ text: `Channel: ${voiceChannel.name} | Guild: ${guildId}` });
     await interaction.editReply({ embeds: [errorEmbed] });
   }
 }
@@ -319,7 +342,7 @@ async function handleEnd(interaction: ChatInputCommandInteraction) {
   const guildId = interaction.guildId!;
   const userId = interaction.user.id;
 
-  // Admin check
+  // Admin check (no voice channel validation needed for ending session)
   if (!isAdmin(userId)) {
     await interaction.reply({
       content: 'This command is only available to server admins.',
@@ -355,9 +378,10 @@ async function handleEnd(interaction: ChatInputCommandInteraction) {
       content: 'Session ended. Transcript sent to your DMs.',
     });
   } catch (error) {
-    console.error('[Voice] Error ending session:', error);
+    console.error(`[Voice] Error ending session in guild ${guildId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     await interaction.editReply({
-      content: `Failed to end session: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      content: `❌ Failed to end session: ${errorMessage}\n\nGuild ID: ${guildId}`,
     });
   }
 }
