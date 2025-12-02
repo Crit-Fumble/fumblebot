@@ -79,9 +79,14 @@ class FumbleBotMCPServer {
       const { name, arguments: args } = request.params;
 
       try {
-        // Foundry VTT tools
-        if (name.startsWith('foundry_')) {
+        // Foundry VTT tools (screenshots, chat)
+        if (name.startsWith('foundry_') && !name.startsWith('foundry_container') && !name.includes('_container')) {
           return await this.handleFoundryTool(name, args);
+        }
+
+        // Foundry container management tools (via Core API)
+        if (name.includes('_container')) {
+          return await this.handleFoundryContainerTool(name, args);
         }
 
         // AI tools (OpenAI & Anthropic)
@@ -532,6 +537,95 @@ class FumbleBotMCPServer {
             },
           },
           required: ['topic'],
+        },
+      },
+
+      // === Foundry Container Management Tools (for GMs) ===
+      {
+        name: 'foundry_create_container',
+        description:
+          'Create a new FoundryVTT container instance for a game session. Use when GM wants to start Foundry for their campaign.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            guildId: {
+              type: 'string',
+              description: 'Discord guild ID',
+            },
+            campaignId: {
+              type: 'string',
+              description: 'Campaign ID (optional)',
+            },
+            worldName: {
+              type: 'string',
+              description: 'World/campaign name for the Foundry instance',
+            },
+            foundryVersion: {
+              type: 'string',
+              description: 'Foundry version (e.g., "12", "11")',
+              default: '12',
+            },
+            maxIdleMinutes: {
+              type: 'number',
+              description: 'Auto-stop after this many idle minutes',
+              default: 120,
+            },
+          },
+          required: ['guildId'],
+        },
+      },
+      {
+        name: 'foundry_list_containers',
+        description:
+          'List all active FoundryVTT containers for the current user. Shows running instances and their status.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'foundry_list_guild_containers',
+        description:
+          'List all FoundryVTT containers for a specific guild/server. GMs can see all running instances for their server.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            guildId: {
+              type: 'string',
+              description: 'Discord guild ID',
+            },
+          },
+          required: ['guildId'],
+        },
+      },
+      {
+        name: 'foundry_get_container',
+        description:
+          'Get details about a specific FoundryVTT container, including status, access URL, and runtime info.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            containerId: {
+              type: 'string',
+              description: 'Container ID',
+            },
+          },
+          required: ['containerId'],
+        },
+      },
+      {
+        name: 'foundry_stop_container',
+        description:
+          'Stop a running FoundryVTT container. Use when game session is over to free resources.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            containerId: {
+              type: 'string',
+              description: 'Container ID to stop',
+            },
+          },
+          required: ['containerId'],
         },
       },
 
@@ -1062,6 +1156,189 @@ class FumbleBotMCPServer {
     };
   }
 
+  // === Foundry Container Tool Implementations ===
+
+  /**
+   * Handle Foundry Container management tools (via Core API)
+   */
+  private async handleFoundryContainerTool(name: string, args: any) {
+    let coreClient;
+    try {
+      coreClient = getCoreClient();
+    } catch (error) {
+      throw new Error('Foundry Container management not available: Core API not configured. Set CORE_SERVER_URL and CORE_SECRET.');
+    }
+
+    switch (name) {
+      case 'foundry_create_container':
+        return await this.foundryCreateContainer(coreClient, args);
+
+      case 'foundry_list_containers':
+        return await this.foundryListContainers(coreClient);
+
+      case 'foundry_list_guild_containers':
+        return await this.foundryListGuildContainers(coreClient, args);
+
+      case 'foundry_get_container':
+        return await this.foundryGetContainer(coreClient, args);
+
+      case 'foundry_stop_container':
+        return await this.foundryStopContainer(coreClient, args);
+
+      default:
+        throw new Error(`Unknown Foundry container tool: ${name}`);
+    }
+  }
+
+  private async foundryCreateContainer(coreClient: any, args: any) {
+    const { guildId, campaignId, worldName, foundryVersion = '12', maxIdleMinutes = 120 } = args;
+
+    const { container } = await coreClient.foundry.createContainer({
+      guildId,
+      campaignId,
+      worldName,
+      foundryVersion,
+      maxIdleMinutes,
+    });
+
+    if (!container.success) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Failed to create Foundry container: ${container.error || 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `✅ Foundry container created successfully!\n\n` +
+                `**Container ID**: ${container.containerId}\n` +
+                `**Access URL**: ${container.accessUrl}\n` +
+                `**License Source**: ${container.licenseSource}\n` +
+                `**Port**: ${container.port}\n\n` +
+                `The Foundry instance is starting up and will be ready in ~30 seconds.`,
+        },
+      ],
+    };
+  }
+
+  private async foundryListContainers(coreClient: any) {
+    const { containers, total } = await coreClient.foundry.listContainers();
+
+    if (total === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'No active Foundry containers found.',
+          },
+        ],
+      };
+    }
+
+    const containerList = containers.map((c: any) => ({
+      id: c.id,
+      containerId: c.containerId,
+      status: c.status,
+      worldName: c.worldName,
+      foundryVersion: c.foundryVersion,
+      guildId: c.guildId,
+      startedAt: c.startedAt,
+      expiresAt: c.expiresAt,
+    }));
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Found ${total} active container(s):\n\n` +
+                JSON.stringify(containerList, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async foundryListGuildContainers(coreClient: any, args: any) {
+    const { guildId } = args;
+
+    const { containers, total } = await coreClient.foundry.listGuildContainers(guildId);
+
+    if (total === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `No active Foundry containers found for guild ${guildId}.`,
+          },
+        ],
+      };
+    }
+
+    const containerList = containers.map((c: any) => ({
+      id: c.id,
+      containerId: c.containerId,
+      status: c.status,
+      worldName: c.worldName,
+      ownerId: c.ownerId,
+      startedAt: c.startedAt,
+    }));
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Found ${total} container(s) for guild ${guildId}:\n\n` +
+                JSON.stringify(containerList, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async foundryGetContainer(coreClient: any, args: any) {
+    const { containerId } = args;
+
+    const { container } = await coreClient.foundry.getContainer(containerId);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `**Container Details**\n\n` +
+                `**ID**: ${container.containerId}\n` +
+                `**Status**: ${container.status}\n` +
+                `**World**: ${container.worldName || 'N/A'}\n` +
+                `**Version**: ${container.foundryVersion}\n` +
+                `**Port**: ${container.port}\n` +
+                `**Started**: ${container.startedAt}\n` +
+                `**Expires**: ${container.expiresAt || 'Never'}\n` +
+                `**Max Idle**: ${container.maxIdleMinutes} minutes\n\n` +
+                `License: ${container.license.status} (${container.license.userId ? 'User' : 'Pool'})`,
+        },
+      ],
+    };
+  }
+
+  private async foundryStopContainer(coreClient: any, args: any) {
+    const { containerId } = args;
+
+    const { message } = await coreClient.foundry.stopContainer(containerId);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `✅ Container stopped: ${message}`,
+        },
+      ],
+    };
+  }
+
   // === Knowledge Base Tool Implementations ===
 
   /**
@@ -1200,12 +1477,13 @@ class FumbleBotMCPServer {
 
     console.error('FumbleBot MCP server started');
     console.error('Available tool categories:');
-    console.error('  - foundry_*   : Foundry VTT operations');
-    console.error('  - anthropic_* : Claude (Sonnet, Haiku) operations');
-    console.error('  - openai_*    : OpenAI (GPT-4o, DALL-E) operations');
-    console.error('  - container_* : Sandboxed container management (via Core API)');
-    console.error('  - fumble_*    : FumbleBot utilities (dice, NPC, lore)');
-    console.error('  - kb_*        : Knowledge Base (TTRPG rules, FoundryVTT docs)');
+    console.error('  - foundry_*           : Foundry VTT operations (screenshots, chat)');
+    console.error('  - foundry_*_container : Foundry container management (create, list, stop)');
+    console.error('  - anthropic_*         : Claude (Sonnet, Haiku) operations');
+    console.error('  - openai_*            : OpenAI (GPT-4o, DALL-E) operations');
+    console.error('  - container_*         : Sandboxed terminal containers (via Core API)');
+    console.error('  - fumble_*            : FumbleBot utilities (dice, NPC, lore)');
+    console.error('  - kb_*                : Knowledge Base (TTRPG rules, FoundryVTT docs)');
   }
 }
 
