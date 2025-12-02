@@ -85,13 +85,20 @@ export class DeepgramTTS {
     const startTime = Date.now();
 
     try {
+      // Build request options - don't send container param for mp3 encoding
+      const requestOptions: any = {
+        model: voice,
+        encoding: encoding,
+      };
+
+      // Only include container for non-mp3 encodings
+      if (encoding !== 'mp3') {
+        requestOptions.container = options?.container ?? 'none';
+      }
+
       const response = await this.deepgram.speak.request(
         { text },
-        {
-          model: voice,
-          encoding: encoding,
-          container: encoding === 'mp3' ? 'none' : (options?.container ?? 'none'),
-        }
+        requestOptions
       );
 
       // Get the audio stream from the response
@@ -143,13 +150,20 @@ export class DeepgramTTS {
     let firstChunkTime: number | null = null;
 
     try {
+      // Build request options - don't send container param for mp3 encoding
+      const requestOptions: any = {
+        model: voice,
+        encoding: encoding,
+      };
+
+      // Only include container for non-mp3 encodings
+      if (encoding !== 'mp3') {
+        requestOptions.container = options?.container ?? 'none';
+      }
+
       const response = await this.deepgram.speak.request(
         { text },
-        {
-          model: voice,
-          encoding: encoding,
-          container: encoding === 'mp3' ? 'none' : (options?.container ?? 'none'),
-        }
+        requestOptions
       );
 
       const stream = await response.getStream();

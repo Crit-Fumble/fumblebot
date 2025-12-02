@@ -1155,15 +1155,16 @@ ${mcpContext}`,
 
     // Only start listening if there are humans present
     if (!shouldPause) {
+      // Play ready sound BEFORE starting to listen
+      // This ensures no dead air at the beginning and confirms bot is ready
+      await this.playReadySound(guildId);
+
+      // Now start listening after the ready sound has played
       if (transcriptionProvider === 'deepgram') {
         deepgramListener.startListening(connection, guildId);
       } else {
         voiceListener.startListening(connection, guildId, whisperPrompt);
       }
-
-      // Play ready sound to indicate the assistant is active
-      // This also helps "prime" the audio system
-      await this.playReadySound(guildId);
     }
 
     this.emit('started', { guildId, channelId: channel.id, paused: shouldPause, transcriptionProvider, ttsProvider, mode });
