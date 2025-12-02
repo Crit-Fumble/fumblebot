@@ -25,6 +25,7 @@ import { getPromptsForContext } from '../../../controllers/prompts.js';
 import { AIService } from '../../ai/service.js';
 import OpenAI from 'openai';
 import { loadOpenAIConfig, getVoiceConfig } from '../../../config.js';
+import { getMCPPromptForContext, MCP_TOOLS_SHORT_PROMPT } from './mcp-tools-prompt.js';
 
 /** Intent parsing result from LLM */
 export interface IntentResult {
@@ -854,11 +855,16 @@ ${transcriptText.slice(0, 3000)}`,
    */
   private async generateResponse(request: string): Promise<string> {
     try {
+      // Get context-specific MCP tools prompt
+      const mcpContext = getMCPPromptForContext(request);
+
       const result = await this.aiService.lookup(
         `Answer this TTRPG/D&D question concisely (1-2 sentences max). Use markdown formatting. If you cite a rule, include the source.
 
 Question: ${request}`,
-        'You are FumbleBot, a helpful D&D 5e assistant. Be brief and accurate.',
+        `You are FumbleBot, a helpful D&D 5e assistant. Be brief and accurate.
+
+${mcpContext}`,
         { maxTokens: 200 }
       );
       return result.content;

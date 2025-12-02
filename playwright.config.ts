@@ -20,8 +20,9 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.TEST_BASE_URL || 'https://www.crit-fumble.com',
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
+    trace: 'retain-on-failure',
+    screenshot: 'on', // Capture screenshots for all tests
+    video: 'retain-on-failure',
   },
 
   projects: [

@@ -109,6 +109,11 @@ class FumbleBotMCPServer {
           return await this.handleKBTool(name, args);
         }
 
+        // Web fetch tools
+        if (name.startsWith('web_')) {
+          return await this.handleWebTool(name, args);
+        }
+
         throw new Error(`Unknown tool: ${name}`);
       } catch (error) {
         return {
@@ -701,6 +706,33 @@ class FumbleBotMCPServer {
               description: 'Filter by tags (comma-separated)',
             },
           },
+        },
+      },
+
+      // === Web Fetch Tools ===
+      {
+        name: 'web_fetch',
+        description:
+          'Fetch content from external TTRPG websites for reference. Supports 5e.tools, D&D Beyond, FoundryVTT KB, Cypher tools, and other TTRPG resources.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            url: {
+              type: 'string',
+              description: 'Full URL to fetch (e.g., "https://5e.tools/spells.html#fireball", "https://foundryvtt.com/kb/article/actors/")',
+            },
+            query: {
+              type: 'string',
+              description: 'What information to extract from the page (e.g., "spell description", "actor API methods", "dice rolling rules")',
+            },
+            site: {
+              type: 'string',
+              description: 'Site type for better parsing',
+              enum: ['5e.tools', 'dndbeyond', 'foundryvtt-kb', 'cypher', 'general'],
+              default: 'general',
+            },
+          },
+          required: ['url', 'query'],
         },
       },
     ];
@@ -1468,6 +1500,87 @@ class FumbleBotMCPServer {
     };
   }
 
+  // === Web Fetch Tool Implementations ===
+
+  /**
+   * Handle Web fetch tools
+   */
+  private async handleWebTool(name: string, args: any) {
+    switch (name) {
+      case 'web_fetch':
+        return await this.webFetch(args);
+
+      default:
+        throw new Error(`Unknown web tool: ${name}`);
+    }
+  }
+
+  private async webFetch(args: any) {
+    const { url, query, site = 'general' } = args;
+
+    try {
+      // Fetch the URL content
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'FumbleBot/1.0 (TTRPG Assistant Bot)',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const html = await response.text();
+
+      // Use AI to extract relevant information from the HTML
+      // This is better than trying to parse HTML manually
+      const aiService = AIService.getInstance();
+
+      const extractionPrompt = `Extract the requested information from this webpage content.
+
+URL: ${url}
+Site Type: ${site}
+User Query: ${query}
+
+Instructions:
+- Extract only the relevant information for the query
+- Format as clean markdown
+- Include important details (stats, rules, mechanics)
+- For spell cards: include level, school, casting time, range, components, duration, description
+- For NPC stat blocks: include all stats, abilities, and actions
+- For tables: format as markdown tables
+- ALWAYS include a linkback to the source at the end: "Source: [${url}](${url})"
+
+HTML Content (first 10000 chars):
+${html.slice(0, 10000)}`;
+
+      const result = await aiService.lookup(
+        extractionPrompt,
+        'You are a web scraper extracting TTRPG reference information. Be accurate and preserve all important details.',
+        { maxTokens: 1000 }
+      );
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: result.content,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Failed to fetch ${url}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
   /**
    * Start the MCP server
    */
@@ -1484,6 +1597,7 @@ class FumbleBotMCPServer {
     console.error('  - container_*         : Sandboxed terminal containers (via Core API)');
     console.error('  - fumble_*            : FumbleBot utilities (dice, NPC, lore)');
     console.error('  - kb_*                : Knowledge Base (TTRPG rules, FoundryVTT docs)');
+    console.error('  - web_*               : Web fetch (5e.tools, D&D Beyond, FoundryVTT KB)');
   }
 }
 
