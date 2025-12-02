@@ -104,7 +104,7 @@ export class DeepgramListener extends EventEmitter {
   /**
    * Start listening to a voice connection
    */
-  startListening(connection: VoiceConnection, guildId: string): void {
+  startListening(connection: VoiceConnection, guildId: string, channel?: any): void {
     if (this.isListening) {
       console.log('[DeepgramListener] Already listening, stopping previous session');
       this.stopListening();
@@ -116,6 +116,16 @@ export class DeepgramListener extends EventEmitter {
     this.isListening = true;
 
     console.log(`[DeepgramListener] Started listening on guild ${guildId}`);
+
+    // Pre-subscribe to all humans in the channel to start filling pre-buffers immediately
+    if (channel?.members) {
+      const humans = Array.from(channel.members.values()).filter((m: any) => !m.user.bot);
+      console.log(`[DeepgramListener] Pre-subscribing to ${humans.length} humans for pre-buffering`);
+
+      for (const member of humans) {
+        this.initializePreBuffer((member as any).user.id);
+      }
+    }
 
     // Listen for speaking events
     this.receiver.speaking.on('start', (userId) => {
@@ -153,155 +163,31 @@ export class DeepgramListener extends EventEmitter {
   }
 
   /**
-   * Setup event handlers for a Deepgram client
+   * Initialize pre-buffer for a user by subscribing to their audio stream
+   * This is called when listening starts to pre-fill buffers for all humans
    */
-  private setupDeepgramEventHandlers(dgClient: LiveClient, userId: string): void {
-    dgClient.on(LiveTranscriptionEvents.Open, () => {
-      console.log(`[DeepgramListener] Deepgram connection opened for ${userId}`);
-    });
+  private initializePreBuffer(userId: string): void {
+    if (!this.receiver || !this.isListening) return;
 
-    dgClient.on(LiveTranscriptionEvents.Transcript, (data) => {
-      const transcript = data.channel?.alternatives?.[0]?.transcript;
-      if (!transcript) return;
-
-      const isFinal = data.is_final;
-      const text = transcript.trim().toLowerCase();
-
-      if (!text) return;
-
-      const currentState = this.userStates.get(userId);
-      if (!currentState) return;
-
-      if (isFinal) {
-        console.log(`[DeepgramListener] Final transcript from ${userId}: "${text}"`);
-        currentState.lastTranscript = text;
-        currentState.lastTranscriptTime = Date.now();
-
-        // Emit transcription event
-        this.emit('transcription', userId, text);
-
-        // Check for wake word
-        const wakeWordMatch = this.checkWakeWord(text);
-        if (wakeWordMatch) {
-          const command = text.slice(wakeWordMatch.length).trim();
-          console.log(`[DeepgramListener] Wake word detected! Command: "${command}"`);
-          this.emit('wakeWord', userId, command);
-        }
-      } else {
-        // Interim result - for real-time UI updates
-        this.emit('interimTranscription', userId, text);
-      }
-    });
-
-    dgClient.on(LiveTranscriptionEvents.UtteranceEnd, () => {
-      console.log(`[DeepgramListener] Utterance ended for ${userId}`);
-      this.emit('stopped', userId);
-
-      // Finalize the stream to get final transcription
-      const currentState = this.userStates.get(userId);
-      if (currentState?.deepgramClient && currentState.isActive === false) {
-        console.log(`[DeepgramListener] Finalizing stream for ${userId} to get final transcript`);
-        try {
-          currentState.deepgramClient.finish();
-        } catch (err) {
-          console.error(`[DeepgramListener] Error finalizing stream:`, err);
-        }
-      }
-    });
-
-    dgClient.on(LiveTranscriptionEvents.Error, (error) => {
-      console.error(`[DeepgramListener] Deepgram error for ${userId}:`, error);
-      this.emit('error', error instanceof Error ? error : new Error(String(error)));
-    });
-
-    dgClient.on(LiveTranscriptionEvents.Close, () => {
-      console.log(`[DeepgramListener] Deepgram connection closed for ${userId}`);
-      // Don't cleanup the audio stream - keep it alive to maintain pre-buffer for next utterance
-      // Only clean up the Deepgram client reference
-      const currentState = this.userStates.get(userId);
-      if (currentState) {
-        currentState.deepgramClient = null;
-        console.log(`[DeepgramListener] Kept audio stream alive for ${userId}, pre-buffer size: ${currentState.preBuffer.length} chunks`);
-      }
-    });
-  }
-
-  /**
-   * Handle user starting to speak
-   */
-  private handleSpeakingStart(userId: string): void {
-    if (!this.receiver || !this.isListening || !this.deepgram) return;
-
-    let state = this.userStates.get(userId);
-
-    // If we have an active stream (even without Deepgram client), reuse it
-    if (state?.audioStream) {
-      state.isActive = true;
-      state.preBufferSent = false; // Reset for new utterance
-      console.log(`[DeepgramListener] User ${userId} resumed speaking (reusing stream, pre-buffer: ${state.preBuffer.length} chunks)`);
-
-      // Create new Deepgram client for this utterance
-      // (the audio stream and pre-buffer are already maintained)
-      const dgClient = this.deepgram.listen.live({
-        model: 'nova-2',
-        language: 'en',
-        smart_format: true,
-        punctuate: true,
-        endpointing: 500,
-        utterance_end_ms: 1000,
-        interim_results: true,
-        keywords: KEYWORDS,
-        encoding: 'linear16',
-        sample_rate: DEEPGRAM_SAMPLE_RATE,
-        channels: 1,
-      });
-
-      state.deepgramClient = dgClient;
-      this.setupDeepgramEventHandlers(dgClient, userId);
+    // Check if we already have a state for this user
+    if (this.userStates.has(userId)) {
+      console.log(`[DeepgramListener] User ${userId} already has a pre-buffer`);
       return;
     }
 
-    // Clean up any partial state (shouldn't happen, but just in case)
-    if (state) {
-      this.cleanupUserState(userId);
-    }
+    console.log(`[DeepgramListener] Initializing pre-buffer for ${userId}`);
 
-    console.log(`[DeepgramListener] User ${userId} started speaking (creating stream)`);
-    this.emit('listening', userId);
-
-    // Create new state
-    state = {
+    // Create state without Deepgram client (just for buffering)
+    const state: UserStreamState = {
       userId,
       deepgramClient: null,
-      isActive: true,
+      isActive: false, // Not actively transcribing yet
       lastTranscript: '',
       lastTranscriptTime: Date.now(),
       preBuffer: [],
       preBufferSent: false,
     };
     this.userStates.set(userId, state);
-
-    // Create Deepgram live transcription client
-    const dgClient = this.deepgram.listen.live({
-      model: 'nova-2',
-      language: 'en',
-      smart_format: true,
-      punctuate: true,
-      // Endpointing: detect end of utterance after silence
-      endpointing: 500, // 500ms silence = end of utterance
-      utterance_end_ms: 1000, // Final utterance boundary
-      // Interim results for real-time feedback
-      interim_results: true,
-      // Keywords for better recognition
-      keywords: KEYWORDS,
-      // Audio encoding
-      encoding: 'linear16',
-      sample_rate: DEEPGRAM_SAMPLE_RATE,
-      channels: 1,
-    });
-
-    state.deepgramClient = dgClient;
-    this.setupDeepgramEventHandlers(dgClient, userId);
 
     // Subscribe to user's audio stream
     const opusStream = this.receiver.subscribe(userId, {
@@ -393,6 +279,147 @@ export class DeepgramListener extends EventEmitter {
       console.error(`[DeepgramListener] Opus decoder error for ${userId}:`, error);
       this.emit('error', error);
     });
+  }
+
+  /**
+   * Setup event handlers for a Deepgram client
+   */
+  private setupDeepgramEventHandlers(dgClient: LiveClient, userId: string): void {
+    dgClient.on(LiveTranscriptionEvents.Open, () => {
+      console.log(`[DeepgramListener] Deepgram connection opened for ${userId}`);
+    });
+
+    dgClient.on(LiveTranscriptionEvents.Transcript, (data) => {
+      const transcript = data.channel?.alternatives?.[0]?.transcript;
+      if (!transcript) return;
+
+      const isFinal = data.is_final;
+      const text = transcript.trim().toLowerCase();
+
+      if (!text) return;
+
+      const currentState = this.userStates.get(userId);
+      if (!currentState) return;
+
+      if (isFinal) {
+        console.log(`[DeepgramListener] Final transcript from ${userId}: "${text}"`);
+        currentState.lastTranscript = text;
+        currentState.lastTranscriptTime = Date.now();
+
+        // Emit transcription event
+        this.emit('transcription', userId, text);
+
+        // Check for wake word
+        const wakeWordMatch = this.checkWakeWord(text);
+        if (wakeWordMatch) {
+          const command = text.slice(wakeWordMatch.length).trim();
+          console.log(`[DeepgramListener] Wake word detected! Command: "${command}"`);
+          this.emit('wakeWord', userId, command);
+        }
+      } else {
+        // Interim result - for real-time UI updates
+        this.emit('interimTranscription', userId, text);
+      }
+    });
+
+    dgClient.on(LiveTranscriptionEvents.UtteranceEnd, () => {
+      console.log(`[DeepgramListener] Utterance ended for ${userId}`);
+      this.emit('stopped', userId);
+
+      // Finalize the stream to get final transcription
+      const currentState = this.userStates.get(userId);
+      if (currentState?.deepgramClient && currentState.isActive === false) {
+        console.log(`[DeepgramListener] Finalizing stream for ${userId} to get final transcript`);
+        try {
+          currentState.deepgramClient.finish();
+        } catch (err) {
+          console.error(`[DeepgramListener] Error finalizing stream:`, err);
+        }
+      }
+    });
+
+    dgClient.on(LiveTranscriptionEvents.Error, (error) => {
+      console.error(`[DeepgramListener] Deepgram error for ${userId}:`, error);
+      this.emit('error', error instanceof Error ? error : new Error(String(error)));
+    });
+
+    dgClient.on(LiveTranscriptionEvents.Close, () => {
+      console.log(`[DeepgramListener] Deepgram connection closed for ${userId}`);
+      // Don't cleanup the audio stream - keep it alive to maintain pre-buffer for next utterance
+      // Only clean up the Deepgram client reference
+      const currentState = this.userStates.get(userId);
+      if (currentState) {
+        currentState.deepgramClient = null;
+        console.log(`[DeepgramListener] Kept audio stream alive for ${userId}, pre-buffer size: ${currentState.preBuffer.length} chunks`);
+      }
+    });
+  }
+
+  /**
+   * Handle user starting to speak
+   */
+  private handleSpeakingStart(userId: string): void {
+    if (!this.receiver || !this.isListening || !this.deepgram) return;
+
+    let state = this.userStates.get(userId);
+
+    // If we have an audio stream with pre-buffer (from pre-subscribe or previous utterance), use it
+    if (state?.audioStream) {
+      state.isActive = true;
+      state.preBufferSent = false; // Reset for new utterance
+      console.log(`[DeepgramListener] User ${userId} started speaking (pre-buffer ready: ${state.preBuffer.length} chunks, ~${state.preBuffer.length * 100}ms)`);
+
+      // Create new Deepgram client for this utterance
+      // (the audio stream and pre-buffer are already maintained)
+      const dgClient = this.deepgram.listen.live({
+        model: 'nova-2',
+        language: 'en',
+        smart_format: true,
+        punctuate: true,
+        endpointing: 500,
+        utterance_end_ms: 1000,
+        interim_results: true,
+        keywords: KEYWORDS,
+        encoding: 'linear16',
+        sample_rate: DEEPGRAM_SAMPLE_RATE,
+        channels: 1,
+      });
+
+      state.deepgramClient = dgClient;
+      this.setupDeepgramEventHandlers(dgClient, userId);
+      return;
+    }
+
+    // No pre-buffer exists - initialize one now (shouldn't happen if pre-subscribe worked)
+    console.log(`[DeepgramListener] User ${userId} started speaking without pre-buffer, initializing now`);
+    this.initializePreBuffer(userId);
+
+    // Wait a moment for pre-buffer to start filling, then create Deepgram client
+    setTimeout(() => {
+      const currentState = this.userStates.get(userId);
+      if (currentState && !currentState.deepgramClient) {
+        currentState.isActive = true;
+        currentState.preBufferSent = false;
+
+        const dgClient = this.deepgram.listen.live({
+          model: 'nova-2',
+          language: 'en',
+          smart_format: true,
+          punctuate: true,
+          endpointing: 500,
+          utterance_end_ms: 1000,
+          interim_results: true,
+          keywords: KEYWORDS,
+          encoding: 'linear16',
+          sample_rate: DEEPGRAM_SAMPLE_RATE,
+          channels: 1,
+        });
+
+        currentState.deepgramClient = dgClient;
+        this.setupDeepgramEventHandlers(dgClient, userId);
+        this.emit('listening', userId);
+      }
+    }, 100);
   }
 
   /**

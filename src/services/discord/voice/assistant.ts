@@ -609,7 +609,7 @@ Provide a concise answer (1-3 sentences). If asking about a name/NPC/item, give 
       const connection = voiceClient.getConnection(guildId);
       if (connection) {
         if (state.transcriptionProvider === 'deepgram') {
-          deepgramListener.startListening(connection, guildId);
+          deepgramListener.startListening(connection, guildId, state.channel);
         } else {
           voiceListener.startListening(connection, guildId, state.whisperPrompt);
         }
@@ -1221,7 +1221,7 @@ ${mcpContext}`,
 
       // Now start listening after the ready sound has played
       if (transcriptionProvider === 'deepgram') {
-        deepgramListener.startListening(connection, guildId);
+        deepgramListener.startListening(connection, guildId, channel);
       } else {
         voiceListener.startListening(connection, guildId, whisperPrompt);
       }
