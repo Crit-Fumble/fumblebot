@@ -24,6 +24,10 @@ import type {
   ActivitySession,
   ActivityType,
   VoiceSession,
+  VoiceStatus,
+  VoiceSessionInfo,
+  VoiceMode,
+  SessionTranscript,
   APIError,
   PaginatedResponse,
 } from '../types/index.js';
@@ -379,41 +383,101 @@ export class FumbleBotClient {
   }
 
   // ---------------------------------------------------------------------------
-  // Voice Sessions
+  // Voice Sessions & Transcription
   // ---------------------------------------------------------------------------
 
   /**
-   * Start a voice session
+   * Get voice connection status for a guild
    */
-  async startVoiceSession(
+  async getVoiceStatus(guildId: string, options?: RequestOptions): Promise<VoiceStatus> {
+    return this.get<VoiceStatus>(`/voice/status?guildId=${guildId}`, options);
+  }
+
+  /**
+   * Get all active voice sessions
+   */
+  async getVoiceSessions(options?: RequestOptions): Promise<{ sessions: VoiceSessionInfo[]; count: number }> {
+    return this.get<{ sessions: VoiceSessionInfo[]; count: number }>('/voice/sessions', options);
+  }
+
+  /**
+   * Join a voice channel
+   */
+  async joinVoiceChannel(
     guildId: string,
     channelId: string,
-    userId: string,
     options?: RequestOptions
-  ): Promise<VoiceSession> {
-    return this.post<VoiceSession>('/voice/sessions', {
+  ): Promise<{ success: boolean; guildId: string; channelId: string; channelName: string }> {
+    return this.post('/voice/join', { guildId, channelId }, options);
+  }
+
+  /**
+   * Leave a voice channel
+   */
+  async leaveVoiceChannel(guildId: string, options?: RequestOptions): Promise<{ success: boolean; guildId: string }> {
+    return this.post('/voice/leave', { guildId }, options);
+  }
+
+  /**
+   * Start voice transcription or assistant
+   */
+  async startVoiceListening(
+    guildId: string,
+    channelId: string,
+    mode: VoiceMode = 'assistant',
+    startedBy?: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; guildId: string; channelId: string; listening: boolean; mode: string }> {
+    return this.post('/voice/listen/start', {
       guildId,
       channelId,
-      userId,
+      mode,
+      startedBy,
     }, options);
   }
 
   /**
-   * Get active voice session
+   * Stop voice transcription or assistant
    */
-  async getVoiceSession(
-    guildId: string,
-    channelId: string,
-    options?: RequestOptions
-  ): Promise<VoiceSession | null> {
-    return this.get<VoiceSession | null>(`/voice/sessions/${guildId}/${channelId}`, options);
+  async stopVoiceListening(guildId: string, options?: RequestOptions): Promise<{ success: boolean; guildId: string; listening: boolean }> {
+    return this.post('/voice/listen/stop', { guildId }, options);
   }
 
   /**
-   * End a voice session
+   * Get transcript for an active voice session
    */
-  async endVoiceSession(sessionId: string, options?: RequestOptions): Promise<void> {
-    return this.delete(`/voice/sessions/${sessionId}`, options);
+  async getVoiceTranscript(guildId: string, options?: RequestOptions): Promise<{ guildId: string; transcript: SessionTranscript }> {
+    return this.get<{ guildId: string; transcript: SessionTranscript }>(`/voice/transcript/${guildId}`, options);
+  }
+
+  /**
+   * Change voice mode (transcribe -> assistant)
+   */
+  async setVoiceMode(
+    guildId: string,
+    mode: VoiceMode,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; guildId: string; mode: string; message: string }> {
+    return this.post('/voice/mode', { guildId, mode }, options);
+  }
+
+  /**
+   * Play audio from URL in a voice channel
+   */
+  async playVoiceAudio(
+    guildId: string,
+    url: string,
+    volume?: number,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; guildId: string; url: string }> {
+    return this.post('/voice/play', { guildId, url, volume }, options);
+  }
+
+  /**
+   * Stop audio playback in a voice channel
+   */
+  async stopVoiceAudio(guildId: string, options?: RequestOptions): Promise<{ success: boolean; guildId: string }> {
+    return this.post('/voice/stop', { guildId }, options);
   }
 
   // ---------------------------------------------------------------------------

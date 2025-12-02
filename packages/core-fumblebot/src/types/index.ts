@@ -244,14 +244,52 @@ export interface InitiativeEntry {
 // Voice Types
 // =============================================================================
 
+export type VoiceMode = 'transcribe' | 'assistant';
+
 export interface VoiceSession {
   id: string;
   guildId: string;
   channelId: string;
   userId: string;
   status: 'active' | 'paused' | 'ended';
+  mode?: VoiceMode;
   startedAt: Date;
   endedAt?: Date;
+}
+
+export interface VoiceStatus {
+  guildId: string;
+  connected: boolean;
+  channelId: string | null;
+  listening: boolean;
+  mode: VoiceMode | null;
+  startedBy: string | null;
+}
+
+export interface VoiceSessionInfo {
+  guildId: string;
+  channelId: string;
+  listening: boolean;
+  mode: VoiceMode | null;
+  startedBy: string | null;
+}
+
+export interface TranscriptionEntry {
+  userId: string;
+  username: string;
+  text: string;
+  timestamp: number;
+  isCommand: boolean;
+}
+
+export interface SessionTranscript {
+  guildId: string;
+  channelId: string;
+  channelName: string;
+  startTime: number;
+  endTime?: number;
+  entries: TranscriptionEntry[];
+  lastPostedIndex: number;
 }
 
 export interface VoiceCommand {
