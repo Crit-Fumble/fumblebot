@@ -15,7 +15,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
+import { AttachmentBuilder, EmbedBuilder, ActivityType } from 'discord.js';
 import type { VoiceBasedChannel, GuildMember, TextChannel, Client, VoiceState } from 'discord.js';
 import { voiceClient, VoiceClient } from './client.js';
 import { voiceListener, VoiceListener } from './listener.js';
@@ -1167,6 +1167,25 @@ ${mcpContext}`,
       }
     }
 
+    // Update bot presence to indicate transcription/assistant is active
+    if (this.discordClient?.user) {
+      const presenceText = mode === 'transcribe'
+        ? 'Transcription In Progress'
+        : 'Voice Assistant Active';
+
+      this.discordClient.user.setPresence({
+        activities: [
+          {
+            name: presenceText,
+            type: ActivityType.Listening,
+          },
+        ],
+        status: 'online',
+      });
+
+      console.log(`[VoiceAssistant] Presence updated: ${presenceText}`);
+    }
+
     this.emit('started', { guildId, channelId: channel.id, paused: shouldPause, transcriptionProvider, ttsProvider, mode });
   }
 
@@ -1206,6 +1225,22 @@ ${mcpContext}`,
     await voiceClient.leaveChannel(guildId);
 
     this.activeGuilds.delete(guildId);
+
+    // Reset bot presence to default when voice session ends
+    if (this.discordClient?.user) {
+      this.discordClient.user.setPresence({
+        activities: [
+          {
+            name: 'Crit-Fumble Gaming',
+            type: ActivityType.Playing,
+          },
+        ],
+        status: 'online',
+      });
+
+      console.log('[VoiceAssistant] Presence reset to default');
+    }
+
     this.emit('stopped', { guildId });
   }
 

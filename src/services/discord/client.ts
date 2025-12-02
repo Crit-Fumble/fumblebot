@@ -142,6 +142,30 @@ export class FumbleBotClient {
   }
 
   /**
+   * Update bot presence status
+   * Used to indicate voice transcription/assistant status
+   */
+  updatePresence(activity: string, type: 'transcribe' | 'assistant' | 'idle' = 'idle'): void {
+    if (!this.isReady || !this.client.user) return
+
+    const activityType = type === 'transcribe' || type === 'assistant'
+      ? ActivityType.Listening
+      : ActivityType.Playing
+
+    this.client.user.setPresence({
+      activities: [
+        {
+          name: activity,
+          type: activityType,
+        },
+      ],
+      status: 'online',
+    })
+
+    console.log(`[FumbleBot] Presence updated: ${activity} (${type})`)
+  }
+
+  /**
    * Register all slash commands and context menus with Discord
    */
   async registerCommands(): Promise<void> {
