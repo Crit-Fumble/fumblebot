@@ -86,7 +86,7 @@ describe('DeepgramTTS', () => {
       const encodings = ['linear16', 'mp3', 'opus', 'flac', 'aac'] as const;
 
       encodings.forEach(encoding => {
-        const ttsWith Encoding = new DeepgramTTS({ encoding });
+        const ttsWithEncoding = new DeepgramTTS({ encoding });
         expect(ttsWithEncoding).toBeDefined();
       });
     });

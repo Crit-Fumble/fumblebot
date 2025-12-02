@@ -3,7 +3,7 @@
  * Global test configuration and mocks
  */
 
-import { vi, afterEach, beforeAll } from 'vitest';
+import { vi, afterEach } from 'vitest';
 import nodeFetch, { Response as NodeFetchResponse, Request as NodeFetchRequest, Headers as NodeFetchHeaders } from 'node-fetch';
 
 // ===========================================
@@ -11,15 +11,13 @@ import nodeFetch, { Response as NodeFetchResponse, Request as NodeFetchRequest, 
 // ===========================================
 // Node.js 22's native fetch has issues on Windows with "bad port" errors
 // Use node-fetch as a workaround for integration tests
-beforeAll(() => {
-  // Only polyfill if native fetch is broken
-  if (!globalThis.fetch || process.platform === 'win32') {
-    globalThis.fetch = nodeFetch as unknown as typeof fetch;
-    globalThis.Response = NodeFetchResponse as unknown as typeof Response;
-    globalThis.Request = NodeFetchRequest as unknown as typeof Request;
-    globalThis.Headers = NodeFetchHeaders as unknown as typeof Headers;
-  }
-});
+// Only polyfill if native fetch is broken
+if (!globalThis.fetch || process.platform === 'win32') {
+  globalThis.fetch = nodeFetch as unknown as typeof fetch;
+  globalThis.Response = NodeFetchResponse as unknown as typeof Response;
+  globalThis.Request = NodeFetchRequest as unknown as typeof Request;
+  globalThis.Headers = NodeFetchHeaders as unknown as typeof Headers;
+}
 
 // ===========================================
 // Environment Variables
@@ -203,10 +201,9 @@ vi.mock('../src/services/ai/service.js', () => ({
 // Test Lifecycle Hooks
 // ===========================================
 
-afterEach(() => {
-  // Clear all mocks after each test
-  vi.clearAllMocks();
-});
+// Note: Test lifecycle hooks (beforeAll, afterEach, etc.) should be defined
+// in individual test files, not in setupFiles.
+// Each test file that uses mocks should call vi.clearAllMocks() in afterEach().
 
 // ===========================================
 // Test Utilities
