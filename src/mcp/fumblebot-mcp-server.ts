@@ -6,6 +6,7 @@
  * - AI operations (Anthropic Claude & OpenAI GPT models)
  * - FumbleBot utilities (dice rolling, NPC generation, etc.)
  * - Docker operations for Foundry instance management
+ * - Knowledge Base operations (TTRPG rules, references, and guides)
  *
  * This allows AI agents to autonomously interact with all FumbleBot capabilities.
  * Non-admin Discord commands also call these MCP tools directly.
@@ -21,6 +22,7 @@ import {
 import { FoundryClient, getScreenshotService } from '../services/foundry/index.js';
 import { AIService } from '../services/ai/service.js';
 import { getContainerClient, type UserContext } from '../services/container/index.js';
+import { getCoreClient } from '../lib/core-client.js';
 import { readFile } from 'fs/promises';
 import type { prisma } from '../services/db/client.js';
 
@@ -95,6 +97,11 @@ class FumbleBotMCPServer {
         // Container tools (sandboxed terminal environment)
         if (name.startsWith('container_')) {
           return await this.handleContainerTool(name, args);
+        }
+
+        // Knowledge Base tools
+        if (name.startsWith('kb_')) {
+          return await this.handleKBTool(name, args);
         }
 
         throw new Error(`Unknown tool: ${name}`);
@@ -525,6 +532,81 @@ class FumbleBotMCPServer {
             },
           },
           required: ['topic'],
+        },
+      },
+
+      // === Knowledge Base Tools ===
+      {
+        name: 'kb_search',
+        description:
+          'Search the TTRPG Knowledge Base for rules, references, and guides. Use when you need to look up game mechanics, spell descriptions, FoundryVTT API docs, or other TTRPG information.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            search: {
+              type: 'string',
+              description: 'Search query (keywords to search for)',
+            },
+            system: {
+              type: 'string',
+              description: 'Filter by game system (e.g., "dnd5e", "cypher", "foundry")',
+            },
+            category: {
+              type: 'string',
+              description: 'Filter by category (e.g., "rules", "api", "user-guide")',
+            },
+            tags: {
+              type: 'string',
+              description: 'Filter by tags (comma-separated)',
+            },
+          },
+          required: ['search'],
+        },
+      },
+      {
+        name: 'kb_get_article',
+        description:
+          'Get a specific Knowledge Base article by its slug. Returns full article content in markdown format.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            slug: {
+              type: 'string',
+              description: 'Article slug (e.g., "common/dice-notation", "dnd5e/spellcasting", "foundry/api-basics")',
+            },
+          },
+          required: ['slug'],
+        },
+      },
+      {
+        name: 'kb_list_systems',
+        description:
+          'List all available game systems in the Knowledge Base (e.g., dnd5e, cypher, foundry, pc-games).',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'kb_list_articles',
+        description:
+          'List all Knowledge Base articles with optional filters. Returns article metadata (titles, systems, categories) without full content.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            system: {
+              type: 'string',
+              description: 'Filter by game system',
+            },
+            category: {
+              type: 'string',
+              description: 'Filter by category',
+            },
+            tags: {
+              type: 'string',
+              description: 'Filter by tags (comma-separated)',
+            },
+          },
         },
       },
     ];
@@ -980,6 +1062,135 @@ class FumbleBotMCPServer {
     };
   }
 
+  // === Knowledge Base Tool Implementations ===
+
+  /**
+   * Handle Knowledge Base tools
+   */
+  private async handleKBTool(name: string, args: any) {
+    let coreClient;
+    try {
+      coreClient = getCoreClient();
+    } catch (error) {
+      throw new Error('Knowledge Base not available: Core API not configured. Set CORE_SERVER_URL and CORE_SECRET.');
+    }
+
+    switch (name) {
+      case 'kb_search':
+        return await this.kbSearch(coreClient, args);
+
+      case 'kb_get_article':
+        return await this.kbGetArticle(coreClient, args);
+
+      case 'kb_list_systems':
+        return await this.kbListSystems(coreClient);
+
+      case 'kb_list_articles':
+        return await this.kbListArticles(coreClient, args);
+
+      default:
+        throw new Error(`Unknown KB tool: ${name}`);
+    }
+  }
+
+  private async kbSearch(coreClient: any, args: any) {
+    const { search, system, category, tags } = args;
+
+    const { articles, total } = await coreClient.kb.list({
+      search,
+      system,
+      category,
+      tags,
+    });
+
+    // Format results
+    const formattedResults = articles.map((article: any) => ({
+      slug: article.slug,
+      title: article.title,
+      system: article.system,
+      category: article.category,
+      tags: article.tags,
+    }));
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            query: search,
+            results: formattedResults,
+            total,
+          }, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async kbGetArticle(coreClient: any, args: any) {
+    const { slug } = args;
+
+    const { article } = await coreClient.kb.get(slug);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# ${article.frontmatter.title}\n\n` +
+                `**System**: ${article.frontmatter.system}\n` +
+                `**Category**: ${article.frontmatter.category}\n` +
+                `**Tags**: ${article.frontmatter.tags.join(', ')}\n\n` +
+                `---\n\n${article.content}`,
+        },
+      ],
+    };
+  }
+
+  private async kbListSystems(coreClient: any) {
+    const { systems, total } = await coreClient.kb.getSystems();
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            systems,
+            total,
+          }, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async kbListArticles(coreClient: any, args: any) {
+    const { system, category, tags } = args;
+
+    const { articles, total } = await coreClient.kb.list({
+      system,
+      category,
+      tags,
+    });
+
+    const formattedArticles = articles.map((article: any) => ({
+      slug: article.slug,
+      title: article.title,
+      system: article.system,
+      category: article.category,
+      tags: article.tags,
+    }));
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            articles: formattedArticles,
+            total,
+          }, null, 2),
+        },
+      ],
+    };
+  }
+
   /**
    * Start the MCP server
    */
@@ -994,6 +1205,7 @@ class FumbleBotMCPServer {
     console.error('  - openai_*    : OpenAI (GPT-4o, DALL-E) operations');
     console.error('  - container_* : Sandboxed container management (via Core API)');
     console.error('  - fumble_*    : FumbleBot utilities (dice, NPC, lore)');
+    console.error('  - kb_*        : Knowledge Base (TTRPG rules, FoundryVTT docs)');
   }
 }
 
