@@ -3,7 +3,8 @@ import { defineConfig, devices } from 'playwright/test'
 /**
  * Playwright Configuration for FumbleBot Integration Tests
  *
- * Tests the bot's API integration with crit-fumble.com website
+ * Tests the FumbleBot platform server (API and UI endpoints)
+ * Make sure to start the server before running tests: npm run platform:dev
  */
 export default defineConfig({
   testDir: './tests/e2e',
@@ -19,7 +20,7 @@ export default defineConfig({
   outputDir: 'tests/results/artifacts',
 
   use: {
-    baseURL: process.env.TEST_BASE_URL || 'https://www.crit-fumble.com',
+    baseURL: process.env.TEST_BASE_URL || 'http://localhost:3000',
     trace: 'retain-on-failure',
     screenshot: 'on', // Capture screenshots for all tests
     video: 'retain-on-failure',
@@ -33,7 +34,7 @@ export default defineConfig({
       use: {},
     },
 
-    // Browser tests for website integration
+    // Browser tests for FumbleBot UI
     {
       name: 'chromium',
       testMatch: /.*\.browser\.test\.ts/,

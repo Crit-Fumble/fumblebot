@@ -6,18 +6,21 @@ import { captureScreenshot } from '../helpers/capture'
  *
  * This test demonstrates how to capture screenshots during UI tests
  * to the tests/output/screenshots folder for visual verification and debugging.
+ *
+ * These tests target the FumbleBot platform UI (login, admin dashboard, etc.).
+ * Make sure the server is running: npm run platform:dev
  */
 
-const BASE_URL = process.env.TEST_BASE_URL || 'https://www.crit-fumble.com'
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000'
 
-test.describe('UI Screenshot Capture Examples', () => {
-  test('should capture homepage screenshots', async ({ page }) => {
-    // Navigate to homepage
-    await page.goto(BASE_URL)
+test.describe('FumbleBot UI Tests', () => {
+  test('should capture login page screenshots', async ({ page }) => {
+    // Navigate to login page
+    await page.goto(`${BASE_URL}/login`)
 
     // Capture initial page load
     await captureScreenshot(page, {
-      name: 'homepage-initial',
+      name: 'login-page-initial',
       testName: test.info().title,
     })
 
@@ -26,92 +29,57 @@ test.describe('UI Screenshot Capture Examples', () => {
 
     // Capture after load
     await captureScreenshot(page, {
-      name: 'homepage-loaded',
+      name: 'login-page-loaded',
       testName: test.info().title,
     })
 
     // Verify page loaded correctly
-    await expect(page).toHaveTitle(/Crit.?Fumble/i)
+    expect(page.url()).toContain('/login')
   })
 
-  test('should capture user interaction flow', async ({ page }) => {
-    await page.goto(BASE_URL)
+  test('should capture admin page (redirect to login)', async ({ page }) => {
+    // Try to access admin page without authentication
+    await page.goto(`${BASE_URL}/admin`)
 
-    // Capture before interaction
+    // Wait for redirect or error page
+    await page.waitForLoadState('networkidle')
+
+    // Capture the result (likely redirect to login or 401)
     await captureScreenshot(page, {
-      name: 'before-interaction',
+      name: 'admin-unauthenticated',
       testName: test.info().title,
     })
 
-    // Look for a navigation link
-    const navLinks = page.locator('nav a, header a')
-    if ((await navLinks.count()) > 0) {
-      // Hover over first link
-      await navLinks.first().hover()
-
-      // Capture hover state
-      await captureScreenshot(page, {
-        name: 'hover-state',
-        testName: test.info().title,
-      })
-    }
-
-    // Capture final state
-    await captureScreenshot(page, {
-      name: 'after-interaction',
-      testName: test.info().title,
-    })
+    // Should redirect to login or show unauthorized
+    const url = page.url()
+    const isLoginOrUnauth = url.includes('/login') || (await page.locator('text=Unauthorized').count()) > 0
+    expect(isLoginOrUnauth).toBeTruthy()
   })
 
-  test('should capture responsive layouts', async ({ page }) => {
-    await page.goto(BASE_URL)
+  test('should capture responsive login page layouts', async ({ page }) => {
+    await page.goto(`${BASE_URL}/login`)
+    await page.waitForLoadState('networkidle')
 
     // Desktop view
     await page.setViewportSize({ width: 1920, height: 1080 })
     await captureScreenshot(page, {
-      name: 'desktop-view',
+      name: 'login-desktop-view',
       testName: test.info().title,
     })
 
     // Tablet view
     await page.setViewportSize({ width: 768, height: 1024 })
     await captureScreenshot(page, {
-      name: 'tablet-view',
+      name: 'login-tablet-view',
       testName: test.info().title,
     })
 
     // Mobile view
     await page.setViewportSize({ width: 375, height: 667 })
     await captureScreenshot(page, {
-      name: 'mobile-view',
+      name: 'login-mobile-view',
       testName: test.info().title,
     })
-  })
-
-  test('should capture modal or dialog interactions', async ({ page }) => {
-    await page.goto(BASE_URL)
-
-    // Capture before any modal/dialog
-    await captureScreenshot(page, {
-      name: 'before-modal',
-      testName: test.info().title,
-    })
-
-    // Look for buttons that might open modals/dialogs
-    const buttons = page.locator('button, [role="button"]')
-    if ((await buttons.count()) > 0) {
-      // Try clicking the first button
-      await buttons.first().click()
-
-      // Wait a bit for any animation
-      await page.waitForTimeout(500)
-
-      // Capture potential modal state
-      await captureScreenshot(page, {
-        name: 'modal-opened',
-        testName: test.info().title,
-      })
-    }
   })
 })
 
@@ -119,70 +87,16 @@ test.describe('UI Error State Capture', () => {
   test('should capture 404 page', async ({ page }) => {
     // Navigate to non-existent page
     await page.goto(`${BASE_URL}/this-page-does-not-exist`)
+    await page.waitForLoadState('networkidle')
 
     // Capture the 404 page
     await captureScreenshot(page, {
       name: '404-error-page',
       testName: test.info().title,
     })
-  })
 
-  test('should capture form validation errors', async ({ page }) => {
-    await page.goto(BASE_URL)
-
-    // Look for any form
-    const forms = page.locator('form')
-    if ((await forms.count()) > 0) {
-      // Capture form before submission
-      await captureScreenshot(page, {
-        name: 'form-before-submit',
-        testName: test.info().title,
-      })
-
-      // Try to submit without filling required fields
-      const submitButton = forms.first().locator('button[type="submit"], input[type="submit"]')
-      if ((await submitButton.count()) > 0) {
-        await submitButton.click()
-
-        // Wait for validation
-        await page.waitForTimeout(500)
-
-        // Capture validation errors
-        await captureScreenshot(page, {
-          name: 'form-validation-errors',
-          testName: test.info().title,
-        })
-      }
-    }
-  })
-})
-
-test.describe('UI Element State Capture', () => {
-  test('should capture different component states', async ({ page }) => {
-    await page.goto(BASE_URL)
-
-    // Capture initial state
-    await captureScreenshot(page, {
-      name: 'initial-state',
-      testName: test.info().title,
-    })
-
-    // Scroll down to see more content
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2))
-    await page.waitForTimeout(300)
-
-    await captureScreenshot(page, {
-      name: 'scrolled-state',
-      testName: test.info().title,
-    })
-
-    // Scroll to bottom
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-    await page.waitForTimeout(300)
-
-    await captureScreenshot(page, {
-      name: 'bottom-state',
-      testName: test.info().title,
-    })
+    // Verify we got a 404 or redirect
+    const response = await page.goto(`${BASE_URL}/this-page-does-not-exist`)
+    expect(response?.status()).toBeGreaterThanOrEqual(400)
   })
 })

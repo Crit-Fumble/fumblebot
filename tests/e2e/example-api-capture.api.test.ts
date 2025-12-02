@@ -6,45 +6,58 @@ import { captureAPICall, createCapturingRequest } from '../helpers/capture'
  *
  * This test demonstrates how to capture API request and response data
  * to the tests/output/data folder for inspection and debugging.
+ *
+ * These tests target the FumbleBot platform server API endpoints.
+ * Make sure the server is running: npm run platform:dev
  */
 
-const BASE_URL = process.env.TEST_BASE_URL || 'https://www.crit-fumble.com'
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000'
 
-test.describe('API Capture Examples', () => {
+test.describe('FumbleBot API Tests', () => {
   test('should capture health check API call', async ({ request }) => {
-    const response = await request.get(`${BASE_URL}/api/health`)
+    const url = `${BASE_URL}/api/health`
+    const response = await request.get(url)
 
     // Capture the request/response for inspection
-    await captureAPICall(response, {
-      name: 'health-check',
-      testName: test.info().title,
-    })
+    await captureAPICall(
+      response,
+      {
+        name: 'health-check',
+        testName: test.info().title,
+      },
+      {
+        method: 'GET',
+        url,
+        headers: {},
+      }
+    )
 
     expect(response.ok()).toBeTruthy()
     const data = await response.json()
-    expect(data.status).toBe('ok')
+    expect(data).toHaveProperty('status')
   })
 
-  test('should capture bot authentication flow', async ({ request }) => {
-    const BOT_DISCORD_ID = process.env.FUMBLEBOT_DISCORD_CLIENT_ID || '1443525084256931880'
-    const BOT_API_SECRET = process.env.FUMBLEBOT_API_SECRET || ''
-
-    // Make the API call
-    const response = await request.get(`${BASE_URL}/api/bot/status`, {
-      headers: {
-        'X-Discord-Bot-Id': BOT_DISCORD_ID,
-        'X-Bot-Secret': BOT_API_SECRET,
-        'X-Bot-Source': 'fumblebot',
-      },
-    })
+  test('should capture stats API call', async ({ request }) => {
+    const url = `${BASE_URL}/api/stats`
+    const response = await request.get(url)
 
     // Capture for inspection
-    await captureAPICall(response, {
-      name: 'bot-auth-success',
-      testName: test.info().title,
-    })
+    await captureAPICall(
+      response,
+      {
+        name: 'stats',
+        testName: test.info().title,
+      },
+      {
+        method: 'GET',
+        url,
+        headers: {},
+      }
+    )
 
     expect(response.ok()).toBeTruthy()
+    const data = await response.json()
+    expect(data).toBeDefined()
   })
 
   test('should auto-capture all API calls in test', async ({ request }) => {
@@ -56,48 +69,57 @@ test.describe('API Capture Examples', () => {
     expect(healthResponse.ok()).toBeTruthy()
 
     // Multiple calls are captured with timestamps
-    const statusResponse = await capturingRequest.get(`${BASE_URL}/api/bot/status`, {
-      headers: {
-        'X-Discord-Bot-Id': 'test-bot',
-        'X-Bot-Source': 'fumblebot',
-      },
-    })
+    const statsResponse = await capturingRequest.get(`${BASE_URL}/api/stats`)
+    expect(statsResponse.ok()).toBeTruthy()
 
     // This will have captured both API calls to tests/output/data/
   })
 })
 
-test.describe('API Error Capture', () => {
-  test('should capture failed API responses', async ({ request }) => {
+test.describe('API Error & Authentication Tests', () => {
+  test('should capture 404 for invalid endpoint', async ({ request }) => {
     // Test an invalid endpoint
-    const response = await request.get(`${BASE_URL}/api/invalid-endpoint`)
+    const url = `${BASE_URL}/api/invalid-endpoint-that-does-not-exist`
+    const response = await request.get(url)
 
     // Capture the error response
-    await captureAPICall(response, {
-      name: 'api-error-404',
-      testName: test.info().title,
-    })
+    await captureAPICall(
+      response,
+      {
+        name: 'api-error-404',
+        testName: test.info().title,
+      },
+      {
+        method: 'GET',
+        url,
+        headers: {},
+      }
+    )
 
     // The captured file will show the 404 error details
     expect(response.status()).toBe(404)
   })
 
-  test('should capture authentication failures', async ({ request }) => {
-    const response = await request.get(`${BASE_URL}/api/bot/status`, {
-      headers: {
-        'X-Discord-Bot-Id': 'invalid-id',
-        'X-Bot-Secret': 'invalid-secret',
-        'X-Bot-Source': 'fumblebot',
-      },
-    })
+  test('should capture 401 for protected admin endpoint', async ({ request }) => {
+    // Try to access admin endpoint without authentication
+    const url = `${BASE_URL}/api/admin/bot-status`
+    const response = await request.get(url)
 
     // Capture the auth failure response
-    await captureAPICall(response, {
-      name: 'auth-failure',
-      testName: test.info().title,
-    })
+    await captureAPICall(
+      response,
+      {
+        name: 'admin-unauthorized',
+        testName: test.info().title,
+      },
+      {
+        method: 'GET',
+        url,
+        headers: {},
+      }
+    )
 
-    const data = await response.json()
-    expect(data.authenticated).toBe(false)
+    // Should be unauthorized
+    expect(response.status()).toBe(401)
   })
 })

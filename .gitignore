@@ -17,6 +17,7 @@ build/
 .env.local
 .env.*.local
 .env.fumblebot
+.env.test
 
 # IDE
 .idea/

@@ -242,17 +242,30 @@ The Vitest config ([vitest.config.ts](../vitest.config.ts)) is configured to:
 - Generate coverage reports
 - Use setup file for global test configuration
 
-## Environment Variables
+## Running the Server for Tests
 
-Create a `.env` file in the project root:
+Before running E2E tests, start the FumbleBot platform server:
 
 ```bash
-# Test target URL
-TEST_BASE_URL=https://www.crit-fumble.com
+# Start the platform server (runs on port 3000 by default)
+npm run platform:dev
+```
 
-# Bot credentials for testing
+## Environment Variables
+
+Create a `.env` file in the project root (copy from `.env.example`):
+
+```bash
+# Test target URL (defaults to localhost:3000)
+TEST_BASE_URL=http://localhost:3000
+
+# Discord configuration (required for full functionality)
 FUMBLEBOT_DISCORD_CLIENT_ID=your-bot-id
-FUMBLEBOT_API_SECRET=your-api-secret
+FUMBLEBOT_DISCORD_CLIENT_SECRET=your-client-secret
+FUMBLEBOT_DISCORD_TOKEN=your-bot-token
+
+# Admin user IDs for testing protected endpoints
+FUMBLEBOT_ADMIN_IDS=your-discord-user-id
 ```
 
 ## CI/CD Integration

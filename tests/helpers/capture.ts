@@ -65,7 +65,8 @@ export async function captureScreenshot(
  */
 export async function captureAPICall(
   response: APIResponse,
-  options: CaptureOptions
+  options: CaptureOptions,
+  requestInfo?: { method?: string; url?: string; headers?: Record<string, string>; body?: any }
 ): Promise<string> {
   const timestamp = options.timestamp !== false ? `-${Date.now()}` : ''
   const testPath = options.testName
@@ -77,17 +78,9 @@ export async function captureAPICall(
   // Ensure directory exists
   await mkdir(dirname(filepath), { recursive: true })
 
-  // Extract request details
-  const request = response.request()
-  const requestHeaders: Record<string, string> = {}
-  const allHeaders = await request.allHeaders()
-  Object.entries(allHeaders).forEach(([key, value]) => {
-    requestHeaders[key] = String(value)
-  })
-
   // Extract response details
   const responseHeaders: Record<string, string> = {}
-  const responseAllHeaders = await response.allHeaders()
+  const responseAllHeaders = response.headers()
   Object.entries(responseAllHeaders).forEach(([key, value]) => {
     responseHeaders[key] = String(value)
   })
@@ -110,10 +103,10 @@ export async function captureAPICall(
     timestamp: new Date().toISOString(),
     testName: options.testName || 'unknown',
     request: {
-      url: request.url(),
-      method: request.method(),
-      headers: requestHeaders,
-      body: request.postDataJSON(),
+      url: requestInfo?.url || response.url(),
+      method: requestInfo?.method || 'GET',
+      headers: requestInfo?.headers || {},
+      body: requestInfo?.body,
     },
     response: {
       status: response.status(),
@@ -143,51 +136,96 @@ export function createCapturingRequest(
     async get(url: string, options?: any) {
       const response = await request.get(url, options)
       const urlObj = new URL(url)
-      await captureAPICall(response, {
-        name: `get-${urlObj.pathname.replace(/\//g, '-')}`,
-        testName,
-        timestamp: true,
-      })
+      await captureAPICall(
+        response,
+        {
+          name: `get-${urlObj.pathname.replace(/\//g, '-')}`,
+          testName,
+          timestamp: true,
+        },
+        {
+          method: 'GET',
+          url,
+          headers: options?.headers || {},
+          body: options?.data,
+        }
+      )
       return response
     },
     async post(url: string, options?: any) {
       const response = await request.post(url, options)
       const urlObj = new URL(url)
-      await captureAPICall(response, {
-        name: `post-${urlObj.pathname.replace(/\//g, '-')}`,
-        testName,
-        timestamp: true,
-      })
+      await captureAPICall(
+        response,
+        {
+          name: `post-${urlObj.pathname.replace(/\//g, '-')}`,
+          testName,
+          timestamp: true,
+        },
+        {
+          method: 'POST',
+          url,
+          headers: options?.headers || {},
+          body: options?.data,
+        }
+      )
       return response
     },
     async put(url: string, options?: any) {
       const response = await request.put(url, options)
       const urlObj = new URL(url)
-      await captureAPICall(response, {
-        name: `put-${urlObj.pathname.replace(/\//g, '-')}`,
-        testName,
-        timestamp: true,
-      })
+      await captureAPICall(
+        response,
+        {
+          name: `put-${urlObj.pathname.replace(/\//g, '-')}`,
+          testName,
+          timestamp: true,
+        },
+        {
+          method: 'PUT',
+          url,
+          headers: options?.headers || {},
+          body: options?.data,
+        }
+      )
       return response
     },
     async delete(url: string, options?: any) {
       const response = await request.delete(url, options)
       const urlObj = new URL(url)
-      await captureAPICall(response, {
-        name: `delete-${urlObj.pathname.replace(/\//g, '-')}`,
-        testName,
-        timestamp: true,
-      })
+      await captureAPICall(
+        response,
+        {
+          name: `delete-${urlObj.pathname.replace(/\//g, '-')}`,
+          testName,
+          timestamp: true,
+        },
+        {
+          method: 'DELETE',
+          url,
+          headers: options?.headers || {},
+          body: options?.data,
+        }
+      )
       return response
     },
     async patch(url: string, options?: any) {
       const response = await request.patch(url, options)
       const urlObj = new URL(url)
-      await captureAPICall(response, {
-        name: `patch-${urlObj.pathname.replace(/\//g, '-')}`,
-        testName,
-        timestamp: true,
-      })
+      await captureAPICall(
+        response,
+        {
+          name: `patch-${urlObj.pathname.replace(/\//g, '-')}`,
+          testName,
+          timestamp: true,
+        },
+        {
+          method: 'PATCH',
+          url,
+          headers: options?.headers || {},
+          body: options?.data,
+        }
+      )
       return response
     },
   }
