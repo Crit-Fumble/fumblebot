@@ -184,18 +184,24 @@ This allows scripts/styles from same origin (fumblebot.crit-fumble.com).
 
 ---
 
-## FumbleBot Proxy Status
+## FumbleBot Proxy Status (2025-12-02 Verified)
 
-✅ **Activity Proxy**: `/.proxy/activity/*` → Core `/activity/*`
+✅ **Activity Proxy**: `/.proxy/activity/*` → Core `/activity/*` (**Works for assets**)
 ✅ **Core Proxy**: `/api/core/*` → Core `/api/core/*`
-✅ **Direct Activity Proxy**: `/activity/*` → Core `/activity/*` (if enabled)
+❌ **Direct Activity Proxy**: `/activity/*` → Core `/activity/*` (**Does NOT work for assets**)
 
-**Verify Direct Proxy**:
+**Verified Behavior**:
 ```bash
+# ✅ Works (through .proxy path)
+curl -I https://fumblebot.crit-fumble.com/.proxy/activity/assets/index-C6UJdVhl.js
+# Returns: 200 OK (212KB JavaScript)
+
+# ❌ Fails (direct path)
 curl -I https://fumblebot.crit-fumble.com/activity/assets/index-C6UJdVhl.js
+# Returns: 404 Not Found
 ```
 
-If this returns 200 OK, then direct proxy is working and the issue is just Vite base path.
+**Conclusion**: The `/activity` proxy is configured in FumbleBot but doesn't properly handle asset subpaths. The white screen is **NOT fixable from FumbleBot side** - Core must use relative asset paths.
 
 ---
 
