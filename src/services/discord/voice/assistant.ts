@@ -704,6 +704,9 @@ Provide a concise answer (1-3 sentences). If asking about a name/NPC/item, give 
 
     console.log(`[VoiceAssistant] Processing wake word command from ${userId} (${source}): "${command}"`);
 
+    // Play acknowledgment sound to indicate we heard the wake word
+    await this.playAcknowledgmentSound(guildId);
+
     // Add to transcript as a command
     await this.addTranscriptionEntry(guildId, userId, `Hey FumbleBot, ${command}`, true);
 
@@ -987,6 +990,57 @@ ${mcpContext}`,
   }
 
   /**
+   * Play a brief acknowledgment sound when wake word is detected
+   * This provides immediate feedback that the bot heard "Hey FumbleBot"
+   */
+  private async playAcknowledgmentSound(guildId: string): Promise<void> {
+    const state = this.activeGuilds.get(guildId);
+    const ttsProvider = state?.ttsProvider ?? 'openai';
+
+    // Check if any TTS provider is available
+    const hasDeepgram = deepgramTTS.isAvailable;
+    const hasOpenAI = this.openai !== null;
+
+    if (!hasDeepgram && !hasOpenAI) {
+      console.log('[VoiceAssistant] No TTS provider available, skipping acknowledgment sound');
+      return;
+    }
+
+    try {
+      // Use a brief acknowledgment phrase
+      const acknowledgment = 'Yes?';
+
+      console.log(`[VoiceAssistant] Playing acknowledgment sound (${ttsProvider})...`);
+
+      let buffer: Buffer;
+
+      if (ttsProvider === 'deepgram' && hasDeepgram) {
+        buffer = await deepgramTTS.synthesize(acknowledgment, {
+          voice: this.config.deepgramVoice,
+        });
+      } else if (hasOpenAI && this.openai) {
+        const response = await this.openai.audio.speech.create({
+          model: 'tts-1',
+          voice: 'fable',
+          input: acknowledgment,
+          speed: 1.1, // Slightly faster for quick acknowledgment
+        });
+        const arrayBuffer = await response.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+      } else {
+        console.warn('[VoiceAssistant] No TTS available for acknowledgment sound');
+        return;
+      }
+
+      await voiceClient.playBuffer(guildId, buffer);
+      console.log('[VoiceAssistant] Acknowledgment sound played');
+    } catch (error) {
+      console.warn('[VoiceAssistant] Failed to play acknowledgment sound:', error);
+      // Non-fatal error, continue without the sound
+    }
+  }
+
+  /**
    * Play a ready chime/sound when joining voice
    * This helps users know the bot is ready and also "primes" the audio system
    */
@@ -1015,19 +1069,25 @@ ${mcpContext}`,
       // Add a small delay to ensure audio player is initialized
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      console.log(`[VoiceAssistant] Generating ready sound (${ttsProvider})...`);
+      // Determine message based on mode
+      const mode = state?.mode ?? 'assistant';
+      const readyMessage = mode === 'transcribe'
+        ? 'Transcription Started'
+        : 'Voice Assistant Ready';
+
+      console.log(`[VoiceAssistant] Generating ready sound (${ttsProvider}): "${readyMessage}"...`);
 
       let buffer: Buffer;
 
       if (ttsProvider === 'deepgram' && hasDeepgram) {
-        buffer = await deepgramTTS.synthesize('Ready!', {
+        buffer = await deepgramTTS.synthesize(readyMessage, {
           voice: this.config.deepgramVoice,
         });
       } else if (hasOpenAI && this.openai) {
         const response = await this.openai.audio.speech.create({
           model: 'tts-1',
           voice: 'fable',
-          input: 'Ready!',
+          input: readyMessage,
           speed: 0.9,
         });
         const arrayBuffer = await response.arrayBuffer();
