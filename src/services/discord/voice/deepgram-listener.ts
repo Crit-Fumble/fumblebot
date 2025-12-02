@@ -245,6 +245,17 @@ export class DeepgramListener extends EventEmitter {
     dgClient.on(LiveTranscriptionEvents.UtteranceEnd, () => {
       console.log(`[DeepgramListener] Utterance ended for ${userId}`);
       this.emit('stopped', userId);
+
+      // Finalize the stream to get final transcription
+      const currentState = this.userStates.get(userId);
+      if (currentState?.deepgramClient && currentState.isActive === false) {
+        console.log(`[DeepgramListener] Finalizing stream for ${userId} to get final transcript`);
+        try {
+          currentState.deepgramClient.finish();
+        } catch (err) {
+          console.error(`[DeepgramListener] Error finalizing stream:`, err);
+        }
+      }
     });
 
     dgClient.on(LiveTranscriptionEvents.Error, (error) => {
@@ -254,6 +265,10 @@ export class DeepgramListener extends EventEmitter {
 
     dgClient.on(LiveTranscriptionEvents.Close, () => {
       console.log(`[DeepgramListener] Deepgram connection closed for ${userId}`);
+      // Don't cleanup immediately - let pending transcripts come through
+      setTimeout(() => {
+        this.cleanupUserState(userId);
+      }, 500);
     });
 
     // Subscribe to user's audio stream
@@ -335,6 +350,20 @@ export class DeepgramListener extends EventEmitter {
     // Don't clean up immediately - Deepgram's endpointing will handle utterance detection
     // Just mark as inactive so we don't send more audio
     state.isActive = false;
+
+    // Give Deepgram time to finalize transcription before closing connection
+    // This allows final transcriptions to come through for wake word detection
+    setTimeout(() => {
+      const currentState = this.userStates.get(userId);
+      if (currentState && !currentState.isActive && currentState.deepgramClient) {
+        console.log(`[DeepgramListener] Finalizing Deepgram connection for ${userId}`);
+        try {
+          currentState.deepgramClient.requestClose();
+        } catch (err) {
+          // Ignore
+        }
+      }
+    }, 2000); // Wait 2 seconds for final transcription
   }
 
   /**
