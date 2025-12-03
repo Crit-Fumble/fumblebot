@@ -891,11 +891,15 @@ ${mcpContext}`,
     console.log(`[VoiceAssistant] Looking up rule with web search: "${request}"`);
 
     // Determine the category based on keywords
-    let category = 'spells'; // default
+    // Default to bestiary for generic "what is X" questions
+    let category = 'bestiary';
     let searchQuery = request;
 
-    // Detect category from request
-    if (requestLower.includes('monster') || requestLower.includes('creature') || requestLower.includes('bestiary')) {
+    // Detect category from request - check spells first since they're common
+    if (requestLower.includes('spell') || requestLower.includes('cast') || requestLower.includes('cantrip') || requestLower.includes('magic')) {
+      category = 'spells';
+      searchQuery = request.replace(/spell|cast|cantrip|what is|tell me about|how does.*work/gi, '').trim();
+    } else if (requestLower.includes('monster') || requestLower.includes('creature') || requestLower.includes('bestiary')) {
       category = 'bestiary';
       searchQuery = request.replace(/monster|creature|bestiary|what is a|tell me about/gi, '').trim();
     } else if (requestLower.includes('item') || requestLower.includes('weapon') || requestLower.includes('armor') || requestLower.includes('equipment')) {
@@ -916,11 +920,8 @@ ${mcpContext}`,
     } else if (requestLower.includes('condition') || requestLower.includes('disease')) {
       category = 'conditions';
       searchQuery = request.replace(/condition|disease|what is|tell me about/gi, '').trim();
-    } else if (requestLower.includes('spell') || requestLower.includes('cast')) {
-      category = 'spells';
-      searchQuery = request.replace(/spell|cast|what is|tell me about|how does.*work/gi, '').trim();
     } else {
-      // Try to extract the main subject
+      // Default: try to extract the main subject for bestiary search
       searchQuery = request.replace(/what is|tell me about|how does|look up|search for|find/gi, '').trim();
     }
 

@@ -184,9 +184,13 @@ function detectRuleLookup(content: string): { isLookup: boolean; category: strin
     isLookup = true;
   }
 
-  // Determine category
-  let category = 'spells';
-  if (contentLower.includes('monster') || contentLower.includes('creature') || contentLower.includes('bestiary')) {
+  // Determine category - default to bestiary for general "what is X" questions
+  // since monsters are most commonly asked about
+  let category = 'bestiary'; // changed default from spells
+  if (contentLower.includes('spell') || contentLower.includes('cast') || contentLower.includes('cantrip') || contentLower.includes('magic')) {
+    category = 'spells';
+    query = query.replace(/spell|cast|cantrip/gi, '').trim();
+  } else if (contentLower.includes('monster') || contentLower.includes('creature') || contentLower.includes('bestiary')) {
     category = 'bestiary';
     query = query.replace(/monster|creature|bestiary/gi, '').trim();
   } else if (contentLower.includes('item') || contentLower.includes('weapon') || contentLower.includes('armor') || contentLower.includes('equipment')) {
@@ -207,9 +211,6 @@ function detectRuleLookup(content: string): { isLookup: boolean; category: strin
   } else if (contentLower.includes('condition') || contentLower.includes('disease')) {
     category = 'conditions';
     query = query.replace(/condition|disease/gi, '').trim();
-  } else if (contentLower.includes('spell') || contentLower.includes('cast')) {
-    category = 'spells';
-    query = query.replace(/spell|cast/gi, '').trim();
   }
 
   // Clean up query
