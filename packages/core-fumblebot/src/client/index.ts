@@ -30,6 +30,9 @@ import type {
   SessionTranscript,
   APIError,
   PaginatedResponse,
+  WebFetchRequest,
+  WebFetchResponse,
+  WebSearch5eToolsRequest,
 } from '../types/index.js';
 
 // =============================================================================
@@ -478,6 +481,44 @@ export class FumbleBotClient {
    */
   async stopVoiceAudio(guildId: string, options?: RequestOptions): Promise<{ success: boolean; guildId: string }> {
     return this.post('/voice/stop', { guildId }, options);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Web Fetch (TTRPG Content)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fetch and summarize content from an external TTRPG website
+   * Only allowed domains: 5e.tools, dndbeyond.com, foundryvtt.com/kb/, tools.cypher-system.com
+   */
+  async fetchWeb(
+    request: WebFetchRequest,
+    options?: RequestOptions
+  ): Promise<WebFetchResponse> {
+    return this.post<WebFetchResponse>('/ai/web/fetch', request, {
+      ...options,
+      timeout: options?.timeout ?? 30000,
+    });
+  }
+
+  /**
+   * Search 5e.tools for D&D 5e content (spells, monsters, items, etc.)
+   */
+  async search5eTools(
+    request: WebSearch5eToolsRequest,
+    options?: RequestOptions
+  ): Promise<WebFetchResponse> {
+    return this.post<WebFetchResponse>('/ai/web/search/5etools', request, {
+      ...options,
+      timeout: options?.timeout ?? 30000,
+    });
+  }
+
+  /**
+   * Get list of allowed domains for web fetch
+   */
+  async getWebFetchAllowedDomains(options?: RequestOptions): Promise<{ domains: string[] }> {
+    return this.get<{ domains: string[] }>('/ai/web/domains', options);
   }
 
   // ---------------------------------------------------------------------------

@@ -346,3 +346,52 @@ export interface PaginatedResponse<T> {
   pageSize: number;
   hasMore: boolean;
 }
+
+// =============================================================================
+// Web Fetch Types
+// =============================================================================
+
+/** Site types supported by web fetch */
+export type WebFetchSiteType = '5etools' | 'dndbeyond' | 'foundryvtt' | 'cypher' | 'general';
+
+/** Request to fetch content from an external URL */
+export interface WebFetchRequest {
+  /** Full URL to fetch (must be from allowed domains) */
+  url: string;
+  /** Optional query to focus the extraction on */
+  query?: string;
+  /** Site type hint for better parsing */
+  siteType?: WebFetchSiteType;
+}
+
+/** Response from web fetch operation */
+export interface WebFetchResponse {
+  /** Whether the fetch was successful */
+  success: boolean;
+  /** Extracted/summarized content */
+  content: string;
+  /** Original title of the page */
+  title?: string;
+  /** Source URL for attribution */
+  source?: string;
+  /** Error message if fetch failed */
+  error?: string;
+  /** Whether content was served from cache */
+  cached?: boolean;
+}
+
+/** Request to search 5e.tools */
+export interface WebSearch5eToolsRequest {
+  /** Search query (e.g., "fireball", "goblin") */
+  query: string;
+  /** Category to search in */
+  category?: 'spells' | 'items' | 'bestiary' | 'classes' | 'races' | 'feats' | 'backgrounds' | 'conditions' | 'rules';
+}
+
+/** Allowed domains for web fetch */
+export const WEB_FETCH_ALLOWED_DOMAINS = [
+  '5e.tools',
+  'dndbeyond.com',
+  'foundryvtt.com/kb/',
+  'callmepartario.github.io',
+] as const;

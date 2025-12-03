@@ -20,6 +20,7 @@ export const ALLOWED_DOMAINS = [
   'foundryvtt.com',
   'www.foundryvtt.com',
   'tools.cypher-system.com',
+  'callmepartario.github.io',
 ] as const;
 
 /** Result of a web fetch operation */
@@ -103,6 +104,7 @@ export class WebFetchService {
       'dndbeyond.com',
       'foundryvtt.com/kb/',
       'tools.cypher-system.com',
+      'callmepartario.github.io',
     ].join(', ');
   }
 

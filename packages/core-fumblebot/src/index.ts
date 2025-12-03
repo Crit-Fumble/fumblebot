@@ -39,3 +39,17 @@ export {
   type FumbleBotClientConfig,
   type RequestOptions,
 } from './client/index.js';
+
+// Re-export dice roller
+export {
+  DiceRoller,
+  createDiceRoller,
+  rollDice,
+  parseDice,
+  formatRollResult,
+  isValidDiceNotation,
+  type GameSystem,
+  type DiceRollOptions,
+  type ParsedDice,
+  type ExtendedRollResult,
+} from './dice/index.js';
