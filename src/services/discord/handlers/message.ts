@@ -150,6 +150,76 @@ async function handleQuickRoll(message: Message, notation: string): Promise<void
 }
 
 /**
+ * Detect if message is a D&D rule lookup and determine category
+ */
+function detectRuleLookup(content: string): { isLookup: boolean; category: string; query: string } {
+  const contentLower = content.toLowerCase();
+
+  // Keywords that indicate a rule/info lookup
+  const lookupPatterns = [
+    /what (?:is|are|does) (?:a |an |the )?(.+?)(?:\?|$)/i,
+    /tell me about (?:the |a |an )?(.+?)(?:\?|$)/i,
+    /how does (?:the |a |an )?(.+?) work(?:\?|$)/i,
+    /look up (?:the |a |an )?(.+?)(?:\?|$)/i,
+    /search (?:for )?(?:the |a |an )?(.+?)(?:\?|$)/i,
+    /find (?:the |a |an )?(.+?)(?:\?|$)/i,
+  ];
+
+  let isLookup = false;
+  let query = content;
+
+  // Check for lookup patterns
+  for (const pattern of lookupPatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      isLookup = true;
+      query = match[1].trim();
+      break;
+    }
+  }
+
+  // Also trigger for D&D-specific terms even without question format
+  const dndTerms = ['spell', 'monster', 'creature', 'item', 'weapon', 'armor', 'feat', 'class', 'race', 'subclass', 'background', 'condition'];
+  if (!isLookup && dndTerms.some(term => contentLower.includes(term))) {
+    isLookup = true;
+  }
+
+  // Determine category
+  let category = 'spells';
+  if (contentLower.includes('monster') || contentLower.includes('creature') || contentLower.includes('bestiary')) {
+    category = 'bestiary';
+    query = query.replace(/monster|creature|bestiary/gi, '').trim();
+  } else if (contentLower.includes('item') || contentLower.includes('weapon') || contentLower.includes('armor') || contentLower.includes('equipment')) {
+    category = 'items';
+    query = query.replace(/item|weapon|armor|equipment/gi, '').trim();
+  } else if (contentLower.includes('class') || contentLower.includes('subclass')) {
+    category = 'classes';
+    query = query.replace(/class|subclass/gi, '').trim();
+  } else if (contentLower.includes('race') || contentLower.includes('species')) {
+    category = 'races';
+    query = query.replace(/race|species/gi, '').trim();
+  } else if (contentLower.includes('feat')) {
+    category = 'feats';
+    query = query.replace(/feat/gi, '').trim();
+  } else if (contentLower.includes('background')) {
+    category = 'backgrounds';
+    query = query.replace(/background/gi, '').trim();
+  } else if (contentLower.includes('condition') || contentLower.includes('disease')) {
+    category = 'conditions';
+    query = query.replace(/condition|disease/gi, '').trim();
+  } else if (contentLower.includes('spell') || contentLower.includes('cast')) {
+    category = 'spells';
+    query = query.replace(/spell|cast/gi, '').trim();
+  }
+
+  // Clean up query
+  query = query.replace(/\?/g, '').trim();
+  if (!query) query = content;
+
+  return { isLookup, category, query };
+}
+
+/**
  * Handle AI chat response
  */
 async function handleAIChat(
@@ -164,6 +234,32 @@ async function handleAIChat(
 
   try {
     const aiService = AIService.getInstance()
+
+    // Check if this is a D&D rule lookup
+    const lookup = detectRuleLookup(content);
+
+    if (lookup.isLookup) {
+      console.log(`[FumbleBot] Detected rule lookup: "${lookup.query}" in category "${lookup.category}"`);
+
+      // Try web search first
+      const searchResult = await aiService.search5eTools(lookup.query, lookup.category);
+
+      if (searchResult.success && searchResult.content) {
+        // Format response for Discord
+        let responseText = searchResult.content;
+
+        // Split response if too long for Discord
+        const maxLength = 2000;
+        if (responseText.length > maxLength) {
+          responseText = responseText.slice(0, maxLength - 3) + '...';
+        }
+
+        await message.reply({ content: responseText });
+        return;
+      }
+      // Fall through to general AI chat if web search fails
+      console.log('[FumbleBot] Web search failed, falling back to AI');
+    }
 
     // Build context from recent messages
     const recentMessages = await message.channel.messages.fetch({ limit: 5 })
@@ -184,6 +280,9 @@ async function handleAIChat(
 You specialize in tabletop RPGs (D&D, Pathfinder, etc.), gaming, and creative writing.
 Keep responses concise (under 2000 characters) and engaging. Use Discord markdown.
 You can use emojis sparingly for personality.
+
+You have access to web search tools for looking up D&D 5e rules, spells, monsters, and items from 5e.tools.
+If someone asks about a spell, monster, or rule you're not sure about, mention that you can search 5e.tools for accurate info.
 
 Current conversation context:
 ${context}
