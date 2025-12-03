@@ -3,6 +3,11 @@
  * Fetches content from whitelisted TTRPG websites for FumbleBot
  *
  * Organized sitemap of allowed domains and their sub-sites
+ * Categories:
+ *   - VTT/Tools: System-agnostic virtual tabletop tools
+ *   - D&D 5e (2024): 5.2-compatible sources + D&D setting wikis
+ *   - Cypher: Cypher System resources + setting wikis (Old Gus' SRD primary)
+ *   - General Lore: Wikipedia for earth-like/historical settings
  */
 
 import { extractContent, type SiteType } from './extractors.js';
@@ -12,60 +17,104 @@ import { extractContent, type SiteType } from './extractors.js';
  * Each entry includes the main domain and any related sub-sites
  */
 export const SITE_MAP = {
-  // D&D 5e Tools - Comprehensive 5e reference
-  '5etools': {
-    name: '5e.tools',
-    description: 'D&D 5e spells, monsters, items, classes, races, feats, and more',
-    domains: ['5e.tools', 'www.5e.tools'],
-    paths: null, // All paths allowed
+  // =========================================================================
+  // VTT/TOOLS - System-agnostic virtual tabletop tools
+  // =========================================================================
+
+  'foundryvtt': {
+    category: 'vtt',
+    name: 'FoundryVTT',
+    description: 'FoundryVTT documentation, API reference, and user guides',
+    domains: ['foundryvtt.com', 'www.foundryvtt.com'],
+    paths: ['/kb/', '/kb', '/api/', '/api'], // KB + Developer API docs
   },
 
-  // D&D Beyond - Official D&D digital platform
-  'dndbeyond': {
-    name: 'D&D Beyond',
-    description: 'Official D&D content, character sheets, and compendium',
-    domains: ['dndbeyond.com', 'www.dndbeyond.com'],
+  // =========================================================================
+  // D&D 5e (2024) - Only 5.2-compatible sources
+  // =========================================================================
+
+  'dnd5e': {
+    category: 'dnd5e',
+    name: 'D&D 5e (2024) Resources',
+    description: 'D&D 5th Edition (2024 rules) reference sites, tools, and setting wikis',
+    domains: ['5e.tools', 'www.5e.tools'], // Primary: 5e.tools (updated for 2024)
     paths: null,
     subsites: {
-      support: {
+      'dndbeyond': {
+        name: 'D&D Beyond',
+        description: 'Official D&D content, character sheets, and compendium (2024)',
+        domains: ['dndbeyond.com', 'www.dndbeyond.com'],
+        paths: null,
+      },
+      'dndbeyond-support': {
         name: 'D&D Beyond Support',
         description: 'Help articles, troubleshooting, and FAQ',
         domains: ['dndbeyond-support.wizards.com'],
         paths: ['/hc/'],
       },
-    },
-  },
-
-  // FoundryVTT - Virtual tabletop knowledge base
-  'foundryvtt': {
-    name: 'FoundryVTT',
-    description: 'FoundryVTT documentation, API reference, and user guides',
-    domains: ['foundryvtt.com', 'www.foundryvtt.com'],
-    paths: ['/kb/', '/kb'], // Only KB paths allowed
-  },
-
-  // Cypher System - Monte Cook Games
-  'cypher': {
-    name: 'Cypher System',
-    description: 'Cypher System rules, abilities, types, and foci',
-    domains: ['tools.cypher-system.com'],
-    paths: null,
-    subsites: {
-      srd: {
-        name: "Old Gus' Cypher SRD",
-        description: 'Comprehensive Cypher System reference',
-        domains: ['callmepartario.github.io'],
-        paths: ['/og-csrd/'],
+      'forgotten-realms': {
+        name: 'Forgotten Realms Wiki',
+        description: 'Forgotten Realms setting - Faerûn, Sword Coast, Waterdeep',
+        domains: ['forgottenrealms.fandom.com'],
+        paths: null,
+      },
+      'eberron': {
+        name: 'Eberron Wiki',
+        description: 'Eberron setting - magitech, noir, pulp adventure',
+        domains: ['eberron.fandom.com'],
+        paths: null,
+      },
+      'dragonlance': {
+        name: 'Dragonlance Wiki',
+        description: 'Dragonlance - Krynn, dragons, and the War of the Lance',
+        domains: ['dragonlance.fandom.com'],
+        paths: null,
+      },
+      'greyhawk': {
+        name: 'Greyhawk Wiki',
+        description: 'World of Greyhawk - Oerth, classic D&D setting',
+        domains: ['greyhawk.fandom.com'],
+        paths: null,
       },
     },
   },
 
-  // Forgotten Realms Wiki - D&D lore
-  'forgotten-realms': {
-    name: 'Forgotten Realms Wiki',
-    description: 'D&D Forgotten Realms setting lore, characters, locations, and history',
-    domains: ['forgottenrealms.fandom.com'],
-    paths: null,
+  // =========================================================================
+  // CYPHER SYSTEM - Monte Cook Games
+  // =========================================================================
+
+  'cypher': {
+    category: 'cypher',
+    name: 'Cypher System',
+    description: 'Cypher System rules, abilities, types, foci, and setting wikis',
+    domains: ['callmepartario.github.io'], // Primary: Old Gus' Cypher SRD
+    paths: ['/og-csrd/'],
+    subsites: {
+      'cypher-tools': {
+        name: 'Cypher System Tools',
+        description: 'Official Cypher System tools and reference',
+        domains: ['tools.cypher-system.com'],
+        paths: null,
+      },
+      'weird-west': {
+        name: 'The Weird West',
+        description: 'Weird West Cypher setting - supernatural western',
+        domains: ['theweirdwest.wikidot.com'],
+        paths: null,
+      },
+    },
+  },
+
+  // =========================================================================
+  // GENERAL LORE - System-agnostic reference (earth-like settings)
+  // =========================================================================
+
+  'lore': {
+    category: 'lore',
+    name: 'General Reference',
+    description: 'Real-world reference for earth-like or historical settings',
+    domains: ['en.wikipedia.org'], // Primary: Wikipedia
+    paths: ['/wiki/'],
   },
 } as const;
 
