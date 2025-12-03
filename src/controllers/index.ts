@@ -36,3 +36,14 @@ export {
   handleDeletePromptPartial,
   handleGetPromptsForContext,
 } from './prompts.js';
+
+// Channel KB sources
+export {
+  handleListChannelKBSources,
+  handleGetChannelKBSource,
+  handleCreateChannelKBSource,
+  handleUpdateChannelKBSource,
+  handleDeleteChannelKBSource,
+  handleSyncChannelKBSource,
+  handleListGuildChannels,
+} from './channel-kb.js';

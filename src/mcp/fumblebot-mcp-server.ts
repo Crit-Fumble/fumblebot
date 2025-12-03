@@ -33,6 +33,7 @@ import {
   ContainerHandler,
   KBHandler,
   WebHandler,
+  WorldAnvilHandler,
 } from './handlers/index.js';
 
 // Configuration
@@ -56,6 +57,7 @@ class FumbleBotMCPServer {
   private containerHandler: ContainerHandler;
   private kbHandler: KBHandler;
   private webHandler: WebHandler;
+  private worldAnvilHandler: WorldAnvilHandler;
 
   constructor(prismaClient?: typeof prisma) {
     this.server = new Server(
@@ -86,6 +88,7 @@ class FumbleBotMCPServer {
     this.containerHandler = new ContainerHandler();
     this.kbHandler = new KBHandler();
     this.webHandler = new WebHandler();
+    this.worldAnvilHandler = new WorldAnvilHandler();
 
     this.setupHandlers();
   }
@@ -145,7 +148,7 @@ class FumbleBotMCPServer {
       return await this.fumbleHandler.handle(name, args);
     }
 
-    // Container tools (sandboxed terminal environment)
+    // Container tools (adventure terminal environment)
     if (name.startsWith('container_')) {
       return await this.containerHandler.handle(name, args);
     }
@@ -158,6 +161,11 @@ class FumbleBotMCPServer {
     // Web fetch tools
     if (name.startsWith('web_')) {
       return await this.webHandler.handle(name, args);
+    }
+
+    // World Anvil tools
+    if (name.startsWith('worldanvil_')) {
+      return await this.worldAnvilHandler.handle(name, args);
     }
 
     throw new Error(`Unknown tool: ${name}`);
@@ -179,12 +187,8 @@ class FumbleBotMCPServer {
     console.error('  - container_*         : Sandboxed terminal containers (via Core API)');
     console.error('  - fumble_*            : FumbleBot utilities (dice, NPC, lore)');
     console.error('  - kb_*                : Knowledge Base (TTRPG rules, FoundryVTT docs)');
-    console.error('  - web_*               : Web fetch & search (5e.tools, D&D Beyond, Cypher, FoundryVTT KB)');
-    console.error('');
-    console.error('Web tools:');
-    console.error('  - web_fetch              : Fetch content from a specific URL');
-    console.error('  - web_search_5etools     : Search 5e.tools for D&D 5e content');
-    console.error('  - web_search_cypher_srd  : Search Old Gus\' Cypher SRD');
+    console.error('  - web_*               : Web fetch & search (5e.tools, D&D Beyond, Cypher, Fandom wikis)');
+    console.error('  - worldanvil_*        : World Anvil (campaign worlds, articles, lore)');
     console.error('');
     console.error(`AI Service status: Anthropic ${this.aiService.isProviderAvailable('anthropic') ? 'configured' : 'NOT configured'}, OpenAI ${this.aiService.isProviderAvailable('openai') ? 'configured' : 'NOT configured'}`);
   }

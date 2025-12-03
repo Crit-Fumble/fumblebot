@@ -443,7 +443,7 @@ Include 10-20 entries with varied weights. Higher weight = more common.`
   /**
    * Get cached rule or look it up
    */
-  async getRule(query: string, system = 'D&D 5e', ttlHours = 24): Promise<string> {
+  async getRule(query: string, system = '5e', ttlHours = 24): Promise<string> {
     // Check database for cached rule
     const cached = await db.getCachedRule(system, query)
     if (cached) {
@@ -463,7 +463,7 @@ Include 10-20 entries with varied weights. Higher weight = more common.`
   /**
    * Pre-cache common rules
    */
-  async precacheRules(queries: string[], system = 'D&D 5e'): Promise<void> {
+  async precacheRules(queries: string[], system = '5e'): Promise<void> {
     for (const query of queries) {
       await this.getRule(query, system)
     }

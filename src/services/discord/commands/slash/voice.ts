@@ -304,10 +304,10 @@ async function handleAssistant(interaction: ChatInputCommandInteraction) {
           inline: true,
         },
         {
-          name: 'Transcription',
+          name: 'Text Channel',
           value: textChannel
-            ? `Live subtitles in <#${textChannel.id}>`
-            : 'No text channel for subtitles',
+            ? `Responses in <#${textChannel.id}>`
+            : 'No text channel linked',
           inline: true,
         },
         {
@@ -320,7 +320,7 @@ async function handleAssistant(interaction: ChatInputCommandInteraction) {
           inline: false,
         }
       )
-      .setFooter({ text: 'Use /voice end to stop and receive transcript' });
+      .setFooter({ text: 'Use /voice end to stop' });
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
@@ -360,23 +360,31 @@ async function handleEnd(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  // Defer reply since DM and stop might take a moment
+  // Defer reply since stop might take a moment
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    // DM transcript to the admin who ran /voice end
-    const transcript = voiceAssistant.getTranscript(guildId);
-    if (transcript && transcript.entries.length > 0) {
-      await voiceAssistant.dmSessionTranscript(userId, guildId);
+    // Get session info before stopping
+    const sessionInfo = voiceAssistant.getSessionInfo(guildId);
+    const wasTranscribing = sessionInfo?.mode === 'transcribe';
+
+    // DM transcript to the admin who ran /voice end (only if transcribing)
+    if (wasTranscribing) {
+      const transcript = voiceAssistant.getTranscript(guildId);
+      if (transcript && transcript.entries.length > 0) {
+        await voiceAssistant.dmSessionTranscript(userId, guildId);
+      }
     }
 
     // Stop the session
     await voiceAssistant.stopListening(guildId);
     await voiceClient.leaveChannel(guildId);
 
-    await interaction.editReply({
-      content: 'Session ended. Transcript sent to your DMs.',
-    });
+    const message = wasTranscribing
+      ? 'Session ended. Transcript sent to your DMs.'
+      : 'Voice assistant session ended.';
+
+    await interaction.editReply({ content: message });
   } catch (error) {
     console.error(`[Voice] Error ending session in guild ${guildId}:`, error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

@@ -218,8 +218,8 @@ export const aiTools: Tool[] = [
         },
         system: {
           type: 'string',
-          description: 'Game system (e.g., "D&D 5e", "Pathfinder 2e")',
-          default: 'D&D 5e',
+          description: 'Game system (e.g., "5e", "Pathfinder 2e", "Cypher")',
+          default: '5e',
         },
         tone: {
           type: 'string',
@@ -245,7 +245,7 @@ export const aiTools: Tool[] = [
         system: {
           type: 'string',
           description: 'Game system',
-          default: 'D&D 5e',
+          default: '5e',
         },
       },
       required: ['query'],
@@ -346,11 +346,11 @@ export const aiTools: Tool[] = [
   },
 ];
 
-/** Container (sandboxed terminal) tool definitions */
+/** Container (adventure terminal) tool definitions */
 export const containerTools: Tool[] = [
   {
     name: 'container_start',
-    description: 'Start a sandboxed container for a guild/channel. Required before executing commands.',
+    description: 'Start an adventure terminal container for a guild/channel. Required before executing commands.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -486,8 +486,8 @@ export const fumbleTools: Tool[] = [
         },
         system: {
           type: 'string',
-          description: 'Game system (e.g., "D&D 5e", "Pathfinder 2e")',
-          default: 'D&D 5e',
+          description: 'Game system (e.g., "5e", "Pathfinder 2e", "Cypher")',
+          default: '5e',
         },
       },
     },
@@ -511,6 +511,170 @@ export const fumbleTools: Tool[] = [
         },
       },
       required: ['topic'],
+    },
+  },
+];
+
+/** Voice control tool definitions */
+export const voiceTools: Tool[] = [
+  {
+    name: 'fumble_join_voice_assistant',
+    description:
+      'Join a Discord voice channel as an AI assistant. FumbleBot will listen for wake words ("Hey FumbleBot") and respond to voice commands like dice rolls and rule lookups. Use when users want to interact with FumbleBot via voice.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        channelId: {
+          type: 'string',
+          description: 'Discord voice channel ID to join',
+        },
+        guildId: {
+          type: 'string',
+          description: 'Discord guild/server ID',
+        },
+      },
+      required: ['channelId', 'guildId'],
+    },
+  },
+  {
+    name: 'fumble_join_voice_transcribe',
+    description:
+      'Join a Discord voice channel to transcribe the conversation. Records all speech and creates a session transcript. Use when users want to take notes or record a session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        channelId: {
+          type: 'string',
+          description: 'Discord voice channel ID to join',
+        },
+        guildId: {
+          type: 'string',
+          description: 'Discord guild/server ID',
+        },
+      },
+      required: ['channelId', 'guildId'],
+    },
+  },
+  {
+    name: 'fumble_stop_assistant',
+    description:
+      'Stop the voice assistant and leave the voice channel. Use when users are done using voice commands.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        guildId: {
+          type: 'string',
+          description: 'Discord guild/server ID',
+        },
+      },
+      required: ['guildId'],
+    },
+  },
+  {
+    name: 'fumble_stop_transcribe',
+    description:
+      'Stop transcription, leave the voice channel, and send the transcript to the requesting user via DM. Use when users are done recording the session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        guildId: {
+          type: 'string',
+          description: 'Discord guild/server ID',
+        },
+        userId: {
+          type: 'string',
+          description: 'Discord user ID to DM the transcript to',
+        },
+      },
+      required: ['guildId', 'userId'],
+    },
+  },
+  {
+    name: 'fumble_get_voice_status',
+    description:
+      'Get the current voice session status for a guild. Returns whether FumbleBot is in a voice channel and what mode it is in (assistant or transcribe).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        guildId: {
+          type: 'string',
+          description: 'Discord guild/server ID',
+        },
+      },
+      required: ['guildId'],
+    },
+  },
+  {
+    name: 'fumble_set_voice',
+    description:
+      'Change FumbleBot\'s TTS voice. Available voices: orion (male narrator, default), luna (female, warm), zeus (male, deep), athena (female, authoritative), perseus (male, heroic), angus (male, Scottish), stella (female, bright).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        voice: {
+          type: 'string',
+          description: 'Voice to use',
+          enum: ['orion', 'luna', 'zeus', 'athena', 'perseus', 'angus', 'stella'],
+          default: 'orion',
+        },
+        guildId: {
+          type: 'string',
+          description: 'Discord guild/server ID (optional, applies to current session)',
+        },
+      },
+      required: ['voice'],
+    },
+  },
+  {
+    name: 'fumble_assume_role',
+    description:
+      'Have FumbleBot assume an NPC role/character for roleplay. FumbleBot will speak in character until the role is cleared. Great for DM-controlled NPCs during sessions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'NPC name (e.g., "Gundren Rockseeker", "Bartender Bob")',
+        },
+        voice: {
+          type: 'string',
+          description: 'Voice to use for this character',
+          enum: ['orion', 'luna', 'zeus', 'athena', 'perseus', 'angus', 'stella'],
+        },
+        personality: {
+          type: 'string',
+          description: 'Brief personality description (e.g., "gruff dwarf merchant", "nervous halfling innkeeper")',
+        },
+        guildId: {
+          type: 'string',
+          description: 'Discord guild/server ID',
+        },
+      },
+      required: ['name', 'guildId'],
+    },
+  },
+  {
+    name: 'fumble_clear_role',
+    description:
+      'Clear the current NPC role and return to default FumbleBot persona.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        guildId: {
+          type: 'string',
+          description: 'Discord guild/server ID',
+        },
+      },
+      required: ['guildId'],
+    },
+  },
+  {
+    name: 'fumble_list_voices',
+    description:
+      'List all available TTS voices with descriptions.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
     },
   },
 ];
@@ -637,7 +801,7 @@ export const webTools: Tool[] = [
   {
     name: 'web_search_5etools',
     description:
-      'Search 5e.tools for D&D 5e spells, items, monsters, classes, races, feats, etc. Returns formatted content with stats and descriptions. Faster than web_fetch when you don\'t have a specific URL.',
+      'Search 5e.tools for 5e spells, items, monsters, classes, races, feats, etc. Returns formatted content with stats and descriptions. Faster than web_fetch when you don\'t have a specific URL.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -658,7 +822,7 @@ export const webTools: Tool[] = [
   {
     name: 'web_search_forgotten_realms',
     description:
-      'Search the Forgotten Realms Wiki for D&D lore, characters, locations, deities, items, and more. Returns formatted content about the Forgotten Realms campaign setting.',
+      'Search the Forgotten Realms Wiki for fantasy lore, characters, locations, deities, items, and more. Returns formatted content about the Forgotten Realms campaign setting.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -687,6 +851,98 @@ export const webTools: Tool[] = [
   },
 ];
 
+/** World Anvil tool definitions */
+export const worldAnvilTools: Tool[] = [
+  {
+    name: 'worldanvil_list_worlds',
+    description:
+      'List all World Anvil worlds accessible to the current user. Returns world names, descriptions, and IDs.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'worldanvil_get_world',
+    description:
+      'Get detailed information about a specific World Anvil world including description, genres, and metadata.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        worldId: {
+          type: 'string',
+          description: 'World Anvil world ID',
+        },
+      },
+      required: ['worldId'],
+    },
+  },
+  {
+    name: 'worldanvil_search_articles',
+    description:
+      'Search for articles in a World Anvil world by title or content. Returns matching articles with summaries. Use for looking up custom campaign lore, NPCs, locations, items, etc.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        worldId: {
+          type: 'string',
+          description: 'World Anvil world ID to search in',
+        },
+        query: {
+          type: 'string',
+          description: 'Search query (article title or keywords)',
+        },
+      },
+      required: ['worldId', 'query'],
+    },
+  },
+  {
+    name: 'worldanvil_get_article',
+    description:
+      'Get full content of a specific World Anvil article by ID. Returns title, content, tags, and related articles.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        articleId: {
+          type: 'string',
+          description: 'World Anvil article ID',
+        },
+      },
+      required: ['articleId'],
+    },
+  },
+  {
+    name: 'worldanvil_list_articles',
+    description:
+      'List all articles in a World Anvil world. Returns article titles, types, and IDs for browsing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        worldId: {
+          type: 'string',
+          description: 'World Anvil world ID',
+        },
+      },
+      required: ['worldId'],
+    },
+  },
+  {
+    name: 'worldanvil_list_categories',
+    description:
+      'List all categories in a World Anvil world. Categories organize articles by type (locations, characters, items, etc.).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        worldId: {
+          type: 'string',
+          description: 'World Anvil world ID',
+        },
+      },
+      required: ['worldId'],
+    },
+  },
+];
+
 /** Get all tool definitions */
 export function getAllTools(): Tool[] {
   return [
@@ -695,7 +951,9 @@ export function getAllTools(): Tool[] {
     ...aiTools,
     ...containerTools,
     ...fumbleTools,
+    ...voiceTools,
     ...kbTools,
     ...webTools,
+    ...worldAnvilTools,
   ];
 }

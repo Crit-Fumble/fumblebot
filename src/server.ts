@@ -40,6 +40,14 @@ import {
   handleUpdatePromptPartial,
   handleDeletePromptPartial,
   handleGetPromptsForContext,
+  // Channel KB sources
+  handleListChannelKBSources,
+  handleGetChannelKBSource,
+  handleCreateChannelKBSource,
+  handleUpdateChannelKBSource,
+  handleDeleteChannelKBSource,
+  handleSyncChannelKBSource,
+  handleListGuildChannels,
 } from './controllers/index.js';
 import {
   handleExecuteCommand,
@@ -199,6 +207,14 @@ export class PlatformServer {
       }
     }
 
+    // Register channel KB sources routes with guild admin authentication
+    for (const route of routes.channelKB || []) {
+      const handler = this.getHandler(route.handler);
+      if (handler) {
+        this.app[route.method](route.path, requireGuildAdmin, handler);
+      }
+    }
+
     // Register AI API routes with AI secret authentication
     // Health endpoint is public, all others require X-AI-Secret
     for (const route of routes.ai || []) {
@@ -225,7 +241,7 @@ export class PlatformServer {
     // Register all other routes from the routes definition
     for (const [category, categoryRoutes] of Object.entries(routes)) {
       // Skip already handled categories
-      if (category === 'chat' || category === 'commands' || category === 'admin' || category === 'prompts' || category === 'ai' || category === 'voice') continue;
+      if (category === 'chat' || category === 'commands' || category === 'admin' || category === 'prompts' || category === 'channelKB' || category === 'ai' || category === 'voice') continue;
       for (const route of categoryRoutes) {
         const handler = this.getHandler(route.handler);
         if (handler) {
@@ -345,6 +361,15 @@ export class PlatformServer {
       handleUpdatePromptPartial: (req, res) => handleUpdatePromptPartial(req, res),
       handleDeletePromptPartial: (req, res) => handleDeletePromptPartial(req, res),
       handleGetPromptsForContext: (req, res) => handleGetPromptsForContext(req, res),
+
+      // Channel KB sources
+      handleListChannelKBSources: (req, res) => handleListChannelKBSources(req, res),
+      handleGetChannelKBSource: (req, res) => handleGetChannelKBSource(req, res),
+      handleCreateChannelKBSource: (req, res) => handleCreateChannelKBSource(req, res),
+      handleUpdateChannelKBSource: (req, res) => handleUpdateChannelKBSource(req, res),
+      handleDeleteChannelKBSource: (req, res) => handleDeleteChannelKBSource(req, res),
+      handleSyncChannelKBSource: (req, res) => handleSyncChannelKBSource(req, res),
+      handleListGuildChannels: (req, res) => handleListGuildChannels(req, res),
 
       // AI API
       handleAIHealth: (req, res) => handleAIHealth(req, res),

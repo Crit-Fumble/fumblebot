@@ -151,7 +151,8 @@ Instructions:
 - For items: include type, rarity, attunement, properties, description
 - For classes/races: include core features, traits, and progression details
 - If multiple matches exist, list all of them briefly
-- ALWAYS end with: "Source: [5e.tools ${category}](${url})"
+- IMPORTANT: Include the source book and page number if shown (e.g., "PHB p.241" or "MM p.166")
+- ALWAYS end with: "Source: [5e.tools ${category}](${url})" and include book citation if available (e.g., "Player's Handbook, p.241")
 
 HTML Content (first 15000 chars):
 ${html.slice(0, 15000)}`;

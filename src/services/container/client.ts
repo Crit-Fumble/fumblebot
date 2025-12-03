@@ -2,7 +2,7 @@
  * Container Service Client
  *
  * Client for interacting with Core's container API.
- * Manages sandboxed terminal environments for Discord Activities.
+ * Manages adventure terminal environments for Discord Activities.
  *
  * @see https://core.crit-fumble.com README for API documentation
  */
@@ -124,7 +124,7 @@ export class ContainerClient {
   /**
    * Start a container for guild/channel
    *
-   * Creates a new sandboxed terminal environment scoped to the guild+channel.
+   * Creates a new adventure terminal environment scoped to the guild+channel.
    * If a container already exists for this scope, it returns the existing one.
    */
   async start(context: UserContext): Promise<ContainerStartResponse> {

@@ -37,11 +37,13 @@ describe('FumbleBot MCP Server', () => {
       const containerTools = [
         'foundry_create_container',
         'foundry_list_containers',
+        'foundry_list_guild_containers',
+        'foundry_get_container',
         'foundry_stop_container',
       ];
 
       containerTools.forEach(tool => {
-        expect(tool).toMatch(/^foundry_.*_container$/);
+        expect(tool).toMatch(/^foundry_.*_containers?$/);
       });
     });
 

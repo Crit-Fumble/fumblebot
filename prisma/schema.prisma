@@ -24,11 +24,12 @@ model Guild {
   installedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  members        GuildMember[]
-  sessions       Session[]
-  diceRolls      DiceRoll[]
-  commands       BotCommand[]
-  promptPartials PromptPartial[]
+  members          GuildMember[]
+  sessions         Session[]
+  diceRolls        DiceRoll[]
+  commands         BotCommand[]
+  promptPartials   PromptPartial[]
+  channelKBSources ChannelKBSource[]
 }
 
 model GuildMember {
@@ -163,6 +164,52 @@ model PromptPartial {
 }
 
 // ===========================================
+// Channel Knowledge Base Sources
+// Discord channels/forums used as knowledge base
+// ===========================================
+
+// Channel types for KB sources
+enum ChannelKBType {
+  text
+  forum
+  thread
+}
+
+model ChannelKBSource {
+  id      String @id @default(cuid())
+  guildId String
+
+  // Channel info
+  channelId   String
+  channelName String?
+  channelType ChannelKBType @default(text)
+
+  // Configuration
+  name        String  // User-friendly name like "House Rules"
+  description String? // Optional description
+  category    String  @default("general") // KB category for search filtering
+
+  // Sync settings
+  syncEnabled Boolean @default(true)
+  syncThreads Boolean @default(true)  // For forums: sync all threads
+  syncPinned  Boolean @default(true)  // Prioritize pinned messages
+  maxMessages Int     @default(100)   // Limit per channel/thread
+
+  // Audit
+  createdBy      String // Discord ID
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lastSyncAt     DateTime?
+  lastSyncStatus String?   // 'success' | 'error' | 'partial'
+  lastSyncError  String?
+
+  guild Guild @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@unique([guildId, channelId])
+  @@index([guildId])
+}
+
+// ===========================================
 // Analytics
 // ===========================================
 
@@ -239,4 +286,34 @@ model ExpressSession {
   expire DateTime
 
   @@index([expire])
+}
+
+// ===========================================
+// User Settings (Discord user preferences)
+// Will migrate to Core once user settings API is ready
+// ===========================================
+
+model UserSettings {
+  id        String   @id @default(cuid())
+  discordId String   @unique
+
+  // Voice preferences
+  defaultVoice String @default("orion")
+
+  // Game system preferences
+  defaultGameSystem String @default("5e")
+
+  // World Anvil integration
+  worldAnvilConnected    Boolean @default(false)
+  worldAnvilUsername     String?
+  worldAnvilDefaultWorld String?
+  worldAnvilWorldName    String?
+
+  // Notification preferences
+  notifySessionReminders Boolean @default(true)
+  notifyTranscriptReady  Boolean @default(true)
+
+  // Audit
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

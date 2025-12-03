@@ -5,7 +5,7 @@
  * Organized sitemap of allowed domains and their sub-sites
  * Categories:
  *   - VTT/Tools: System-agnostic virtual tabletop tools
- *   - D&D 5e (2024): 5.2-compatible sources + D&D setting wikis
+ *   - 5e (2024): 5.2-compatible sources + fantasy setting wikis
  *   - Cypher: Cypher System resources + setting wikis (Old Gus' SRD primary)
  *   - General Lore: Wikipedia for earth-like/historical settings
  */
@@ -30,13 +30,13 @@ export const SITE_MAP = {
   },
 
   // =========================================================================
-  // D&D 5e (2024) - Only 5.2-compatible sources
+  // 5e (2024) - Only 5.2-compatible sources
   // =========================================================================
 
   'dnd5e': {
     category: 'dnd5e',
-    name: 'D&D 5e (2024) Resources',
-    description: 'D&D 5th Edition (2024 rules) reference sites, tools, and setting wikis',
+    name: '5e (2024) Resources',
+    description: '5th Edition (2024 rules) reference sites, tools, and setting wikis',
     domains: ['5e.tools', 'www.5e.tools'], // Primary: 5e.tools (updated for 2024)
     paths: null,
     subsites: {
@@ -145,6 +145,8 @@ export interface WebFetchResult {
   source?: string;
   error?: string;
   cached?: boolean;
+  /** Base64-encoded screenshot (for JavaScript-rendered pages) */
+  screenshot?: string;
 }
 
 /** Options for web fetch */
@@ -162,6 +164,8 @@ interface CacheEntry {
   content: string;
   title: string;
   timestamp: number;
+  source?: string;
+  screenshot?: string;
 }
 
 /**
@@ -364,29 +368,260 @@ export class WebFetchService {
 
   /**
    * Search 5e.tools for D&D 5e content
+   * Uses Playwright to render the JavaScript-heavy page
    */
   async search5eTools(query: string, category: string = 'spells'): Promise<WebFetchResult> {
     const categoryMap: Record<string, string> = {
-      spells: 'spells.html',
-      items: 'items.html',
-      bestiary: 'bestiary.html',
-      monsters: 'bestiary.html',
-      classes: 'classes.html',
-      races: 'races.html',
-      feats: 'feats.html',
-      backgrounds: 'backgrounds.html',
-      conditions: 'conditionsdiseases.html',
-      rules: 'variantrules.html',
+      spells: 'spells',
+      items: 'items',
+      bestiary: 'bestiary',
+      monsters: 'bestiary',
+      classes: 'classes',
+      races: 'races',
+      feats: 'feats',
+      backgrounds: 'backgrounds',
+      conditions: 'conditionsdiseases',
+      actions: 'actions',
+      rules: 'variantrules',
     };
 
-    const page = categoryMap[category.toLowerCase()] || 'spells.html';
-    const searchTerm = encodeURIComponent(query.toLowerCase().replace(/\s+/g, ''));
-    const url = `https://5e.tools/${page}#${searchTerm}`;
+    const page = categoryMap[category.toLowerCase()] || 'spells';
 
-    return this.fetch(url, {
-      query,
-      siteType: '5etools',
-    });
+    // Check cache first
+    const cacheKey = `5etools:${page}:${query.toLowerCase()}`;
+    const cached = this.getFromCache(cacheKey);
+    if (cached) {
+      console.log(`[WebFetch] Cache hit for 5e.tools: ${query}`);
+      return {
+        success: true,
+        content: cached.content,
+        source: cached.source,
+        screenshot: cached.screenshot,
+        cached: true,
+      };
+    }
+
+    console.log(`[WebFetch] Using Playwright to fetch 5e.tools: ${query} in ${page}`);
+
+    try {
+      // Use Playwright to render the JavaScript-heavy 5e.tools page
+      const { getWebScreenshotService } = await import('./screenshot.js');
+      const screenshotService = getWebScreenshotService();
+
+      const result = await screenshotService.fetch5eToolsContent(page, query);
+
+      if (result.success && result.content) {
+        // Cache the result
+        this.addToCache(cacheKey, {
+          content: result.content,
+          title: query,
+          source: result.url,
+          screenshot: result.screenshot,
+          timestamp: Date.now(),
+        });
+
+        return {
+          success: true,
+          content: result.content,
+          source: result.url,
+          screenshot: result.screenshot,
+        };
+      }
+
+      return {
+        success: false,
+        error: 'Could not extract content from 5e.tools',
+        source: result.url,
+      };
+    } catch (error) {
+      console.error('[WebFetch] Playwright fetch failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Playwright fetch failed',
+        source: `https://5e.tools/${page}.html`,
+      };
+    }
+  }
+
+  /**
+   * Known Fandom wikis with their display names
+   */
+  private fandomWikis: Record<string, string> = {
+    'forgottenrealms': 'Forgotten Realms Wiki',
+    'eberron': 'Eberron Wiki',
+    'dragonlance': 'Dragonlance Wiki',
+    'greyhawk': 'Greyhawk Wiki',
+    'criticalrole': 'Critical Role Wiki',
+    'pathfinder': 'Pathfinder Wiki',
+    'starwars': 'Wookieepedia',
+    'lotr': 'Lord of the Rings Wiki',
+  };
+
+  /**
+   * Search any Fandom wiki for content
+   * Uses MediaWiki API for fast, structured results
+   * @param wiki - The Fandom wiki subdomain (e.g., 'forgottenrealms', 'eberron', 'criticalrole')
+   * @param query - The search query
+   */
+  async searchFandomWiki(wiki: string, query: string): Promise<WebFetchResult> {
+    const wikiName = this.fandomWikis[wiki] || `${wiki}.fandom.com`;
+    const baseUrl = `https://${wiki}.fandom.com`;
+
+    // Check cache first
+    const cacheKey = `fandom:${wiki}:${query.toLowerCase()}`;
+    const cached = this.getFromCache(cacheKey);
+    if (cached) {
+      console.log(`[WebFetch] Cache hit for ${wikiName}: ${query}`);
+      return {
+        success: true,
+        content: cached.content,
+        source: cached.source,
+        cached: true,
+      };
+    }
+
+    console.log(`[WebFetch] Searching ${wikiName} for: ${query}`);
+
+    try {
+      // Search using MediaWiki OpenSearch API
+      const searchUrl = `${baseUrl}/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&format=json`;
+      const searchResponse = await fetch(searchUrl, {
+        headers: { 'User-Agent': 'FumbleBot/1.0 (TTRPG Assistant Bot)' },
+      });
+
+      if (!searchResponse.ok) {
+        throw new Error(`Search failed: HTTP ${searchResponse.status}`);
+      }
+
+      const searchResults = await searchResponse.json() as [string, string[], string[], string[]];
+      const [, titles, , urls] = searchResults;
+
+      if (titles.length === 0) {
+        return {
+          success: false,
+          error: `No results found for "${query}" in ${wikiName}.`,
+          source: baseUrl,
+        };
+      }
+
+      // Fetch the first matching article using MediaWiki parse API for clean content
+      const articleTitle = titles[0];
+      const parseUrl = `${baseUrl}/api.php?action=parse&page=${encodeURIComponent(articleTitle)}&prop=text|categories&format=json`;
+
+      const articleResponse = await fetch(parseUrl, {
+        headers: { 'User-Agent': 'FumbleBot/1.0 (TTRPG Assistant Bot)' },
+      });
+
+      if (!articleResponse.ok) {
+        throw new Error(`Article fetch failed: HTTP ${articleResponse.status}`);
+      }
+
+      const parseData = await articleResponse.json() as {
+        parse?: {
+          title: string;
+          text: { '*': string };
+          categories: Array<{ '*': string }>;
+        };
+      };
+
+      if (!parseData.parse) {
+        return {
+          success: false,
+          error: 'Could not parse article content',
+          source: urls[0],
+        };
+      }
+
+      // Extract text content from HTML
+      const html = parseData.parse.text['*'];
+      const content = this.extractWikiContent(html, parseData.parse.title, urls[0], titles.slice(1), wikiName);
+
+      // Cache the result
+      this.addToCache(cacheKey, {
+        content,
+        title: parseData.parse.title,
+        source: urls[0],
+        timestamp: Date.now(),
+      });
+
+      return {
+        success: true,
+        content,
+        source: urls[0],
+      };
+    } catch (error) {
+      console.error(`[WebFetch] ${wikiName} search failed:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Search failed',
+        source: baseUrl,
+      };
+    }
+  }
+
+  /**
+   * Search Forgotten Realms Wiki (convenience wrapper)
+   */
+  async searchForgottenRealms(query: string): Promise<WebFetchResult> {
+    return this.searchFandomWiki('forgottenrealms', query);
+  }
+
+  /**
+   * Extract clean content from Fandom wiki HTML
+   */
+  private extractWikiContent(html: string, title: string, url: string, relatedTitles: string[], wikiName = 'Wiki'): string {
+    // Remove HTML tags but preserve structure
+    let content = html
+      // Remove script and style tags with content
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      // Remove navigation, infobox cruft, edit links
+      .replace(/<div class="(toc|navbox|infobox|mw-editsection)[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+      .replace(/<table[^>]*class="[^"]*infobox[^"]*"[^>]*>[\s\S]*?<\/table>/gi, '')
+      // Convert headers
+      .replace(/<h2[^>]*><span[^>]*>([^<]+)<\/span>[\s\S]*?<\/h2>/gi, '\n## $1\n')
+      .replace(/<h3[^>]*><span[^>]*>([^<]+)<\/span>[\s\S]*?<\/h3>/gi, '\n### $1\n')
+      // Convert paragraphs and line breaks
+      .replace(/<p[^>]*>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      // Convert lists
+      .replace(/<li[^>]*>/gi, '• ')
+      .replace(/<\/li>/gi, '\n')
+      // Convert bold and italic
+      .replace(/<b[^>]*>([^<]+)<\/b>/gi, '**$1**')
+      .replace(/<strong[^>]*>([^<]+)<\/strong>/gi, '**$1**')
+      .replace(/<i[^>]*>([^<]+)<\/i>/gi, '*$1*')
+      .replace(/<em[^>]*>([^<]+)<\/em>/gi, '*$1*')
+      // Remove all remaining HTML tags
+      .replace(/<[^>]+>/g, '')
+      // Decode HTML entities
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      // Clean up whitespace
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    // Truncate if too long (aim for ~2000 chars for Discord)
+    if (content.length > 2500) {
+      content = content.slice(0, 2500) + '...\n\n*[Article truncated]*';
+    }
+
+    // Add title and source
+    let result = `# ${title}\n\n${content}`;
+
+    // Add related articles if any
+    if (relatedTitles.length > 0) {
+      result += `\n\n---\n**Related:** ${relatedTitles.join(', ')}`;
+    }
+
+    result += `\n\n**Source:** [${wikiName}](${url})`;
+
+    return result;
   }
 
   /**
@@ -459,6 +694,27 @@ export async function search5eTools(
   category?: string
 ): Promise<WebFetchResult> {
   return webFetchService.search5eTools(query, category);
+}
+
+/**
+ * Helper function to search Forgotten Realms Wiki
+ */
+export async function searchForgottenRealms(
+  query: string
+): Promise<WebFetchResult> {
+  return webFetchService.searchForgottenRealms(query);
+}
+
+/**
+ * Helper function to search any Fandom wiki
+ * @param wiki - The wiki subdomain (e.g., 'forgottenrealms', 'eberron', 'criticalrole')
+ * @param query - The search query
+ */
+export async function searchFandomWiki(
+  wiki: string,
+  query: string
+): Promise<WebFetchResult> {
+  return webFetchService.searchFandomWiki(wiki, query);
 }
 
 /**

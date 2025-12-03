@@ -53,3 +53,11 @@ export {
   type ParsedDice,
   type ExtendedRollResult,
 } from './dice/index.js';
+
+// Re-export adventure terminal CLI
+export {
+  TerminalCLI,
+  createTerminalCLI,
+  runTerminalREPL,
+  type TerminalCLIConfig,
+} from './cli/index.js';

@@ -3,9 +3,17 @@
  * Handles direct messages and bot mentions
  */
 
-import type { Message } from 'discord.js'
+import {
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
+} from 'discord.js'
+import type { Message, ButtonInteraction, TextChannel } from 'discord.js'
 import type { FumbleBotClient } from '../client.js'
 import { AIService } from '../../ai/service.js'
+import { isKnowledgeBaseConfigured, getKnowledgeBaseClient } from '../../../lib/knowledge-base-client.js'
 
 /**
  * Handle incoming messages
@@ -33,14 +41,12 @@ export async function handleMessage(
   if (!content) {
     await message.reply({
       content:
-        "👋 Hi! I'm FumbleBot, your TTRPG companion!\n\n" +
-        "**Commands:**\n" +
-        "• `/roll 2d6+3` - Roll dice\n" +
-        "• `/ask <question>` - Ask me anything\n" +
-        "• `/dm <scenario>` - Get DM responses\n" +
-        "• `/npc <type>` - Generate NPCs\n" +
-        "• `/activity start` - Start a Discord Activity\n\n" +
-        "Or just chat with me by mentioning me!",
+        "Hey! What's up?\n\n" +
+        "**Quick stuff:**\n" +
+        "• `/roll 2d6+3` - dice\n" +
+        "• `/npc tavern keeper` - generate NPCs\n" +
+        "• Ask me about spells, monsters, rules, whatever\n\n" +
+        "Just @ me with a question.",
     })
     return
   }
@@ -149,75 +155,94 @@ async function handleQuickRoll(message: Message, notation: string): Promise<void
   }
 }
 
+interface LookupClassification {
+  isLookup: boolean;
+  category: string;
+  query: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
 /**
- * Detect if message is a D&D rule lookup and determine category
+ * Use Haiku to intelligently classify if a message is a D&D/TTRPG lookup request
+ * Returns the category and optimized search query
  */
-function detectRuleLookup(content: string): { isLookup: boolean; category: string; query: string } {
+async function classifyWithHaiku(content: string): Promise<LookupClassification> {
+  const aiService = AIService.getInstance();
+
+  try {
+    const result = await aiService.lookup(
+      content,
+      `You are a classifier for a TTRPG Discord bot. Analyze if this message is asking for TTRPG rule/content lookup.
+
+Respond with ONLY a JSON object (no markdown, no explanation):
+{
+  "isLookup": true/false,
+  "category": "spells|bestiary|items|classes|races|feats|backgrounds|conditions|actions|lore|none",
+  "query": "optimized search term",
+  "confidence": "high|medium|low"
+}
+
+Categories:
+- spells: Spell lookups (fireball, cure wounds, cantrips)
+- bestiary: Monsters/creatures (goblin, dragon, beholder)
+- items: Magic items, weapons, armor, equipment
+- classes: Character classes and subclasses
+- races: Player races/species
+- feats: Character feats
+- backgrounds: Character backgrounds
+- conditions: Status conditions (poisoned, stunned) and diseases
+- actions: Game rules, actions, mechanics (chase rules, grappling, opportunity attacks)
+- lore: Setting lore, locations, NPCs, deities, factions, history (Waterdeep, Drizzt, Forgotten Realms, Baldur's Gate)
+- none: Not a TTRPG lookup (greetings, off-topic chat)
+
+Examples:
+"Chase rules" → {"isLookup":true,"category":"actions","query":"chase","confidence":"high"}
+"what is a goblin" → {"isLookup":true,"category":"bestiary","query":"goblin","confidence":"high"}
+"fireball spell" → {"isLookup":true,"category":"spells","query":"fireball","confidence":"high"}
+"how does grappling work" → {"isLookup":true,"category":"actions","query":"grapple","confidence":"high"}
+"tell me about Waterdeep" → {"isLookup":true,"category":"lore","query":"Waterdeep","confidence":"high"}
+"who is Drizzt" → {"isLookup":true,"category":"lore","query":"Drizzt Do'Urden","confidence":"high"}
+"hey bot" → {"isLookup":false,"category":"none","query":"","confidence":"high"}
+"longsword" → {"isLookup":true,"category":"items","query":"longsword","confidence":"medium"}`,
+      { maxTokens: 150 }
+    );
+
+    // Parse the JSON response
+    const cleaned = result.content.trim().replace(/```json\n?|\n?```/g, '');
+    const parsed = JSON.parse(cleaned);
+
+    return {
+      isLookup: parsed.isLookup === true,
+      category: parsed.category || 'bestiary',
+      query: parsed.query || content,
+      confidence: parsed.confidence || 'medium',
+    };
+  } catch (error) {
+    console.error('[FumbleBot] Haiku classification failed:', error);
+    // Fallback to simple detection
+    return fallbackDetection(content);
+  }
+}
+
+/**
+ * Fallback detection when Haiku fails
+ */
+function fallbackDetection(content: string): LookupClassification {
   const contentLower = content.toLowerCase();
 
-  // Keywords that indicate a rule/info lookup
-  const lookupPatterns = [
-    /what (?:is|are|does) (?:a |an |the )?(.+?)(?:\?|$)/i,
-    /tell me about (?:the |a |an )?(.+?)(?:\?|$)/i,
-    /how does (?:the |a |an )?(.+?) work(?:\?|$)/i,
-    /look up (?:the |a |an )?(.+?)(?:\?|$)/i,
-    /search (?:for )?(?:the |a |an )?(.+?)(?:\?|$)/i,
-    /find (?:the |a |an )?(.+?)(?:\?|$)/i,
-  ];
+  // Quick check for obvious D&D terms
+  const dndTerms = ['spell', 'monster', 'creature', 'item', 'weapon', 'armor', 'feat', 'class', 'race', 'background', 'condition', 'rule', 'action'];
+  const hasTerms = dndTerms.some(term => contentLower.includes(term));
 
-  let isLookup = false;
-  let query = content;
+  // Check for question patterns
+  const isQuestion = /^(what|how|tell|look|search|find|explain)/i.test(content);
 
-  // Check for lookup patterns
-  for (const pattern of lookupPatterns) {
-    const match = content.match(pattern);
-    if (match) {
-      isLookup = true;
-      query = match[1].trim();
-      break;
-    }
-  }
-
-  // Also trigger for D&D-specific terms even without question format
-  const dndTerms = ['spell', 'monster', 'creature', 'item', 'weapon', 'armor', 'feat', 'class', 'race', 'subclass', 'background', 'condition'];
-  if (!isLookup && dndTerms.some(term => contentLower.includes(term))) {
-    isLookup = true;
-  }
-
-  // Determine category - default to bestiary for general "what is X" questions
-  // since monsters are most commonly asked about
-  let category = 'bestiary'; // changed default from spells
-  if (contentLower.includes('spell') || contentLower.includes('cast') || contentLower.includes('cantrip') || contentLower.includes('magic')) {
-    category = 'spells';
-    query = query.replace(/spell|cast|cantrip/gi, '').trim();
-  } else if (contentLower.includes('monster') || contentLower.includes('creature') || contentLower.includes('bestiary')) {
-    category = 'bestiary';
-    query = query.replace(/monster|creature|bestiary/gi, '').trim();
-  } else if (contentLower.includes('item') || contentLower.includes('weapon') || contentLower.includes('armor') || contentLower.includes('equipment')) {
-    category = 'items';
-    query = query.replace(/item|weapon|armor|equipment/gi, '').trim();
-  } else if (contentLower.includes('class') || contentLower.includes('subclass')) {
-    category = 'classes';
-    query = query.replace(/class|subclass/gi, '').trim();
-  } else if (contentLower.includes('race') || contentLower.includes('species')) {
-    category = 'races';
-    query = query.replace(/race|species/gi, '').trim();
-  } else if (contentLower.includes('feat')) {
-    category = 'feats';
-    query = query.replace(/feat/gi, '').trim();
-  } else if (contentLower.includes('background')) {
-    category = 'backgrounds';
-    query = query.replace(/background/gi, '').trim();
-  } else if (contentLower.includes('condition') || contentLower.includes('disease')) {
-    category = 'conditions';
-    query = query.replace(/condition|disease/gi, '').trim();
-  }
-
-  // Clean up query
-  query = query.replace(/\?/g, '').trim();
-  if (!query) query = content;
-
-  return { isLookup, category, query };
+  return {
+    isLookup: hasTerms || isQuestion,
+    category: 'bestiary', // Default fallback
+    query: content.replace(/\?/g, '').trim(),
+    confidence: 'low',
+  };
 }
 
 /**
@@ -236,30 +261,101 @@ async function handleAIChat(
   try {
     const aiService = AIService.getInstance()
 
-    // Check if this is a D&D rule lookup
-    const lookup = detectRuleLookup(content);
+    // Use Haiku to intelligently classify the message
+    const classification = await classifyWithHaiku(content);
+    console.log(`[FumbleBot] Classification: ${JSON.stringify(classification)}`);
 
-    if (lookup.isLookup) {
-      console.log(`[FumbleBot] Detected rule lookup: "${lookup.query}" in category "${lookup.category}"`);
+    if (classification.isLookup && classification.category !== 'none') {
+      console.log(`[FumbleBot] Detected rule lookup: "${classification.query}" in category "${classification.category}" (${classification.confidence})`);
 
-      // Try web search first
-      const searchResult = await aiService.search5eTools(lookup.query, lookup.category);
+      // Try KB first if configured
+      if (isKnowledgeBaseConfigured()) {
+        try {
+          const kbClient = getKnowledgeBaseClient();
+          const kbResult = await kbClient.search({
+            query: classification.query,
+            limit: 3,
+          });
 
-      if (searchResult.success && searchResult.content) {
-        // Format response for Discord
-        let responseText = searchResult.content;
+          if (kbResult.results.length > 0) {
+            console.log(`[FumbleBot] KB found ${kbResult.results.length} results for "${classification.query}"`);
 
-        // Split response if too long for Discord
-        const maxLength = 2000;
-        if (responseText.length > maxLength) {
-          responseText = responseText.slice(0, maxLength - 3) + '...';
+            // Get the top result's full content
+            const topResult = kbResult.results[0];
+            const document = await kbClient.getDocument(topResult.id);
+
+            // Use paginated reply for long KB content
+            await sendPaginatedReply(
+              message,
+              `📖 ${document.title}`,
+              document.content,
+              {
+                source: `${document.system} Knowledge Base`,
+                footerText: `System: ${document.system}`,
+                authorId: message.author.id,
+              }
+            );
+            return;
+          }
+          console.log('[FumbleBot] KB had no results, trying web search');
+        } catch (error) {
+          console.error('[FumbleBot] KB search error:', error);
+          // Fall through to web search
         }
-
-        await message.reply({ content: responseText });
-        return;
       }
-      // Fall through to general AI chat if web search fails
-      console.log('[FumbleBot] Web search failed, falling back to AI');
+
+      // Try web search as fallback - route based on category
+      if (classification.category === 'lore') {
+        // Route lore queries to Forgotten Realms Wiki
+        console.log(`[FumbleBot] Searching Forgotten Realms Wiki for: ${classification.query}`);
+        const loreResult = await aiService.searchForgottenRealms(classification.query);
+
+        if (loreResult.success && loreResult.content) {
+          await sendPaginatedReply(
+            message,
+            `📜 Lore: ${classification.query}`,
+            loreResult.content,
+            {
+              source: loreResult.source ? `[View on Forgotten Realms Wiki](${loreResult.source})` : undefined,
+              authorId: message.author.id,
+            }
+          );
+          return;
+        }
+        console.log('[FumbleBot] Forgotten Realms search failed, falling back to AI');
+      } else {
+        // Route other categories to 5e.tools
+        const searchResult = await aiService.search5eTools(classification.query, classification.category);
+
+        if (searchResult.success && searchResult.content) {
+          // Use paginated reply for long web search content
+          const categoryTitles: Record<string, string> = {
+            spells: '🔮 Spell',
+            bestiary: '🐉 Monster',
+            items: '⚔️ Item',
+            classes: '👤 Class',
+            races: '🧝 Race',
+            feats: '⭐ Feat',
+            backgrounds: '📜 Background',
+            conditions: '💀 Condition',
+            actions: '📋 Rules',
+          };
+          const titlePrefix = categoryTitles[classification.category] || '📖';
+
+          await sendPaginatedReply(
+            message,
+            `${titlePrefix}: ${classification.query}`,
+            searchResult.content,
+            {
+              source: searchResult.source ? `[View on 5e.tools](${searchResult.source})` : undefined,
+              authorId: message.author.id,
+            }
+          );
+          return;
+        }
+        // Fall through to general AI chat if web search fails
+        console.log('[FumbleBot] Web search failed, falling back to AI');
+      }
     }
 
     // Build context from recent messages
@@ -277,20 +373,25 @@ async function handleAIChat(
           content: content,
         },
       ],
-      systemPrompt: `You are FumbleBot, a friendly and helpful assistant for the Crit-Fumble Gaming community.
-You specialize in tabletop RPGs (D&D, Pathfinder, etc.), gaming, and creative writing.
-Keep responses concise (under 2000 characters) and engaging. Use Discord markdown.
-You can use emojis sparingly for personality.
+      systemPrompt: `You're FumbleBot - a chill TTRPG nerd who hangs out in the Crit-Fumble Discord.
 
-You have access to web search tools for looking up D&D 5e rules, spells, monsters, and items from 5e.tools.
-If someone asks about a spell, monster, or rule you're not sure about, mention that you can search 5e.tools for accurate info.
+Personality:
+- Casual and friendly, not corporate or over-enthusiastic
+- Give straight answers without unnecessary preamble
+- Use Discord markdown naturally
+- Skip the "I'd be happy to help!" stuff - just help
 
-Current conversation context:
+What you know:
+- D&D 5e (2024 rules), Cypher System, FoundryVTT
+- You have a knowledge base with spells, classes, monsters, rules
+- You can search 5e.tools for anything you don't know off the top of your head
+
+Context:
 ${context}
 
-Important: Never break character or reveal you're an AI. You're FumbleBot!`,
-      maxTokens: 500,
-      temperature: 0.8,
+Keep it brief. Don't pad responses.`,
+      maxTokens: 400,
+      temperature: 0.7,
     })
 
     // Split response if too long for Discord
@@ -305,7 +406,235 @@ Important: Never break character or reveal you're an AI. You're FumbleBot!`,
   } catch (error) {
     console.error('[FumbleBot] AI chat error:', error)
     await message.reply({
-      content: "🤖 I'm having trouble thinking right now. Try again in a moment!",
+      content: "Brain's not cooperating. Give me a sec and try again.",
     })
   }
+}
+
+/**
+ * Send a paginated embed response for long content
+ * Includes interactive buttons for navigation
+ */
+async function sendPaginatedReply(
+  message: Message,
+  title: string,
+  content: string,
+  options?: {
+    source?: string;
+    footerText?: string;
+    color?: number;
+    authorId?: string;
+  }
+): Promise<void> {
+  const maxCharsPerPage = 3500;
+  const color = options?.color ?? 0x7c3aed;
+
+  // Check if pagination is needed
+  if (content.length <= maxCharsPerPage) {
+    // Simple embed without pagination
+    const embed = new EmbedBuilder()
+      .setTitle(title)
+      .setDescription(content)
+      .setColor(color)
+      .setTimestamp();
+
+    if (options?.source) {
+      embed.addFields({
+        name: '🔗 Source',
+        value: options.source,
+        inline: true,
+      });
+    }
+
+    if (options?.footerText) {
+      embed.setFooter({ text: options.footerText });
+    }
+
+    await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // Split content into pages
+  const pages = splitIntoPages(content, maxCharsPerPage);
+  let currentPage = 0;
+
+  const buildPageEmbed = (pageIndex: number): EmbedBuilder => {
+    const embed = new EmbedBuilder()
+      .setTitle(title)
+      .setDescription(pages[pageIndex])
+      .setColor(color)
+      .setTimestamp();
+
+    if (options?.source) {
+      embed.addFields({
+        name: '🔗 Source',
+        value: options.source,
+        inline: true,
+      });
+    }
+
+    const pageInfo = `Page ${pageIndex + 1}/${pages.length}`;
+    embed.setFooter({
+      text: options?.footerText ? `${options.footerText} • ${pageInfo}` : pageInfo,
+    });
+
+    return embed;
+  };
+
+  const buildButtons = (pageIndex: number): ActionRowBuilder<ButtonBuilder> => {
+    const row = new ActionRowBuilder<ButtonBuilder>();
+
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId('msg_page_first')
+        .setLabel('⏮')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(pageIndex === 0)
+    );
+
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId('msg_page_prev')
+        .setLabel('◀ Previous')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(pageIndex === 0)
+    );
+
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId('msg_page_indicator')
+        .setLabel(`${pageIndex + 1} / ${pages.length}`)
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true)
+    );
+
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId('msg_page_next')
+        .setLabel('Next ▶')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(pageIndex === pages.length - 1)
+    );
+
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId('msg_page_last')
+        .setLabel('⏭')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(pageIndex === pages.length - 1)
+    );
+
+    return row;
+  };
+
+  // Send initial message with pagination
+  const reply = await message.reply({
+    embeds: [buildPageEmbed(0)],
+    components: [buildButtons(0)],
+  });
+
+  // Create collector for button interactions
+  const collector = reply.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 5 * 60 * 1000, // 5 minute timeout
+    filter: (interaction) => {
+      // Only allow the original author to navigate (or anyone if no authorId)
+      if (options?.authorId && interaction.user.id !== options.authorId) {
+        interaction.reply({
+          content: 'Only the person who asked can use these buttons.',
+          ephemeral: true,
+        });
+        return false;
+      }
+      return true;
+    },
+  });
+
+  collector.on('collect', async (interaction: ButtonInteraction) => {
+    const action = interaction.customId;
+
+    switch (action) {
+      case 'msg_page_first':
+        currentPage = 0;
+        break;
+      case 'msg_page_prev':
+        currentPage = Math.max(0, currentPage - 1);
+        break;
+      case 'msg_page_next':
+        currentPage = Math.min(pages.length - 1, currentPage + 1);
+        break;
+      case 'msg_page_last':
+        currentPage = pages.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    await interaction.update({
+      embeds: [buildPageEmbed(currentPage)],
+      components: [buildButtons(currentPage)],
+    });
+  });
+
+  collector.on('end', async () => {
+    // Remove buttons when collector expires
+    try {
+      await reply.edit({
+        embeds: [buildPageEmbed(currentPage)],
+        components: [], // Remove buttons
+      });
+    } catch (e) {
+      // Message might have been deleted
+    }
+  });
+}
+
+/**
+ * Split content into pages for pagination
+ */
+function splitIntoPages(content: string, maxChars: number): string[] {
+  if (content.length <= maxChars) {
+    return [content];
+  }
+
+  const pages: string[] = [];
+  let remaining = content;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxChars) {
+      pages.push(remaining);
+      break;
+    }
+
+    let breakPoint = maxChars;
+
+    // Try paragraph break first
+    const paragraphBreak = remaining.lastIndexOf('\n\n', maxChars);
+    if (paragraphBreak > maxChars * 0.5) {
+      breakPoint = paragraphBreak;
+    } else {
+      // Try line break
+      const lineBreak = remaining.lastIndexOf('\n', maxChars);
+      if (lineBreak > maxChars * 0.5) {
+        breakPoint = lineBreak;
+      } else {
+        // Try sentence break
+        const sentenceBreak = remaining.lastIndexOf('. ', maxChars);
+        if (sentenceBreak > maxChars * 0.5) {
+          breakPoint = sentenceBreak + 1;
+        } else {
+          // Try space
+          const spaceBreak = remaining.lastIndexOf(' ', maxChars);
+          if (spaceBreak > maxChars * 0.5) {
+            breakPoint = spaceBreak;
+          }
+        }
+      }
+    }
+
+    pages.push(remaining.slice(0, breakPoint).trim());
+    remaining = remaining.slice(breakPoint).trim();
+  }
+
+  return pages;
 }

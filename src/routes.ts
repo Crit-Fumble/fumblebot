@@ -207,6 +207,52 @@ export const routes: Record<string, RouteDefinition[]> = {
     },
   ],
 
+  // Channel KB Sources API (Discord channels as knowledge base)
+  channelKB: [
+    {
+      method: 'get',
+      path: '/api/admin/guilds/:guildId/channel-kb',
+      handler: 'handleListChannelKBSources',
+      description: 'List all channel KB sources for a guild',
+    },
+    {
+      method: 'get',
+      path: '/api/admin/guilds/:guildId/channel-kb/:id',
+      handler: 'handleGetChannelKBSource',
+      description: 'Get a specific channel KB source',
+    },
+    {
+      method: 'post',
+      path: '/api/admin/guilds/:guildId/channel-kb',
+      handler: 'handleCreateChannelKBSource',
+      description: 'Create a new channel KB source',
+    },
+    {
+      method: 'post',
+      path: '/api/admin/guilds/:guildId/channel-kb/:id',
+      handler: 'handleUpdateChannelKBSource',
+      description: 'Update a channel KB source',
+    },
+    {
+      method: 'delete',
+      path: '/api/admin/guilds/:guildId/channel-kb/:id',
+      handler: 'handleDeleteChannelKBSource',
+      description: 'Delete a channel KB source',
+    },
+    {
+      method: 'post',
+      path: '/api/admin/guilds/:guildId/channel-kb/:id/sync',
+      handler: 'handleSyncChannelKBSource',
+      description: 'Trigger sync for a channel KB source',
+    },
+    {
+      method: 'get',
+      path: '/api/admin/guilds/:guildId/channels',
+      handler: 'handleListGuildChannels',
+      description: 'List available Discord channels for KB configuration',
+    },
+  ],
+
   // AI API (for Core and external services)
   ai: [
     {

@@ -33,6 +33,13 @@ import type {
   WebFetchRequest,
   WebFetchResponse,
   WebSearch5eToolsRequest,
+  TerminalStartRequest,
+  TerminalStartResponse,
+  TerminalStopResponse,
+  TerminalStatusResponse,
+  TerminalExecRequest,
+  TerminalExecResponse,
+  TerminalSessionInfo,
 } from '../types/index.js';
 
 // =============================================================================
@@ -519,6 +526,105 @@ export class FumbleBotClient {
    */
   async getWebFetchAllowedDomains(options?: RequestOptions): Promise<{ domains: string[] }> {
     return this.get<{ domains: string[] }>('/ai/web/domains', options);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Adventure Terminal
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Start an adventure terminal for a guild/channel
+   *
+   * Creates a sandboxed container environment scoped to the guild+channel.
+   * If a terminal already exists for this scope, returns the existing one.
+   *
+   * @example
+   * ```typescript
+   * const terminal = await fumblebot.terminalStart({
+   *   guildId: '123456789',
+   *   channelId: '987654321',
+   *   userId: '111222333',
+   *   userName: 'PlayerOne',
+   * });
+   * console.log(`Terminal started: ${terminal.containerId}`);
+   * ```
+   */
+  async terminalStart(
+    request: TerminalStartRequest,
+    options?: RequestOptions
+  ): Promise<TerminalStartResponse> {
+    return this.post<TerminalStartResponse>('/terminal/start', request, options);
+  }
+
+  /**
+   * Stop an adventure terminal
+   */
+  async terminalStop(
+    guildId: string,
+    channelId: string,
+    options?: RequestOptions
+  ): Promise<TerminalStopResponse> {
+    return this.post<TerminalStopResponse>('/terminal/stop', { guildId, channelId }, options);
+  }
+
+  /**
+   * Get terminal status
+   */
+  async terminalStatus(
+    guildId: string,
+    channelId: string,
+    options?: RequestOptions
+  ): Promise<TerminalStatusResponse> {
+    const query = new URLSearchParams({ guildId, channelId });
+    return this.get<TerminalStatusResponse>(`/terminal/status?${query}`, options);
+  }
+
+  /**
+   * Execute a command in the terminal
+   *
+   * Runs a command in the terminal and returns output.
+   *
+   * @example
+   * ```typescript
+   * const result = await fumblebot.terminalExec({
+   *   guildId: '123456789',
+   *   channelId: '987654321',
+   *   command: 'roll 2d6+3',
+   *   timeout: 5000,
+   * });
+   * console.log(result.stdout);
+   * ```
+   */
+  async terminalExec(
+    request: TerminalExecRequest,
+    options?: RequestOptions
+  ): Promise<TerminalExecResponse> {
+    return this.post<TerminalExecResponse>('/terminal/exec', request, {
+      ...options,
+      timeout: options?.timeout ?? request.timeout ?? 30000,
+    });
+  }
+
+  /**
+   * Get list of all active terminal sessions
+   */
+  async terminalSessions(
+    options?: RequestOptions
+  ): Promise<{ sessions: TerminalSessionInfo[]; count: number }> {
+    return this.get<{ sessions: TerminalSessionInfo[]; count: number }>('/terminal/sessions', options);
+  }
+
+  /**
+   * Get WebSocket URL for direct terminal connection
+   *
+   * Returns the URL to connect to the terminal via WebSocket for
+   * real-time interactive shell access.
+   */
+  getTerminalWsUrl(guildId: string, channelId: string): string {
+    const query = new URLSearchParams({ guildId, channelId });
+    // Replace http(s) with ws(s) for WebSocket URL
+    const wsBase = this.config.baseUrl.replace(/^http/, 'ws');
+    return `${wsBase}/terminal/ws?${query}`;
   }
 
   // ---------------------------------------------------------------------------

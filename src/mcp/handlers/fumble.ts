@@ -1,15 +1,34 @@
 /**
  * FumbleBot Utility Tool Handlers
- * Handles dice rolling, NPC generation, and lore generation
+ * Handles dice rolling, NPC generation, lore generation, and voice control
  */
 
 import type { AIService } from '../../services/ai/service.js';
 import type { MCPToolResult } from './types.js';
+import { voiceHandler } from './voice.js';
+
+/** Voice tool names that should be delegated to VoiceHandler */
+const VOICE_TOOLS = [
+  'fumble_join_voice_assistant',
+  'fumble_join_voice_transcribe',
+  'fumble_stop_assistant',
+  'fumble_stop_transcribe',
+  'fumble_get_voice_status',
+  'fumble_set_voice',
+  'fumble_assume_role',
+  'fumble_clear_role',
+  'fumble_list_voices',
+];
 
 export class FumbleHandler {
   constructor(private aiService: AIService) {}
 
   async handle(name: string, args: any): Promise<MCPToolResult> {
+    // Delegate voice tools to VoiceHandler
+    if (VOICE_TOOLS.includes(name)) {
+      return await voiceHandler.handle(name, args);
+    }
+
     switch (name) {
       case 'fumble_roll_dice':
         return await this.rollDice(args);

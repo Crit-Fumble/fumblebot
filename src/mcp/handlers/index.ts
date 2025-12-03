@@ -10,4 +10,6 @@ export { FumbleHandler } from './fumble.js';
 export { ContainerHandler } from './container.js';
 export { KBHandler } from './kb.js';
 export { WebHandler } from './web.js';
+export { VoiceHandler, voiceHandler } from './voice.js';
+export { WorldAnvilHandler } from './worldanvil.js';
 export type { MCPToolResult, MCPContentItem, MCPHandler } from './types.js';

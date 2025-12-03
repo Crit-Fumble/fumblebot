@@ -369,4 +369,7 @@ export type {
   PromptPartial,
   PromptTargetType,
   CachedRule,
+  ChannelKBSource,
+  ChannelKBType,
+  UserSettings,
 } from '.prisma/fumblebot'

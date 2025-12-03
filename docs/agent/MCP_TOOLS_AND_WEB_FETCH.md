@@ -1,45 +1,77 @@
 # MCP Tools Awareness & Web Fetch Capability
 
-**Date**: 2025-12-01
-**Status**: Implemented, pending Deepgram API key
+**Date**: 2025-12-03
+**Status**: Implemented with web search tools
 
 ## Overview
 
 FumbleBot now has enhanced AI capabilities with:
-1. **MCP Tools Awareness** - Voice assistant knows about its available tools
-2. **Web Fetch Capability** - Can access external TTRPG sites for reference
-3. **Source Linkbacks** - Always includes source citations
-4. **Rich Embeds** - Formats spell cards, NPC stat blocks, and tables
+1. **AI-Powered Classification** - Uses Haiku to intelligently detect D&D lookup requests
+2. **Web Search Tools** - Searches 5e.tools, Cypher SRD, Forgotten Realms Wiki, and more
+3. **Voice/Text Parity** - Same lookup features in both voice and text chat
+4. **Text Embeds** - Voice responses always post text embeds with full content
+5. **Pagination** - Interactive buttons for long content (◀ Previous | Next ▶)
+6. **Screenshots** - Captures and embeds spell/monster images from 5e.tools
+7. **Source Linkbacks** - Always includes direct links to reference sites
 
 ---
 
 ## What's New
 
-### 1. MCP Tools Awareness
+### 1. AI-Powered Message Classification
 
-The voice assistant now has an internal system prompt that makes it aware of all available MCP tools. When you ask questions, it can:
+The Discord text handler now uses **Claude Haiku** for intelligent lookup classification. When you mention FumbleBot with a question, it:
 
-- Suggest searching the knowledge base for spells/rules
-- Offer to generate NPCs or lore
-- Mention Foundry VTT capabilities
-- Recommend fetching from external sites
+- Automatically detects if it's a D&D/TTRPG lookup request
+- Determines the correct category (spells, bestiary, items, rules, etc.)
+- Optimizes the search query for better results
+- Falls back to regex patterns if AI unavailable
+
+**Example Classifications:**
+```
+"Chase rules" → {"category":"actions","query":"chase"}
+"What is a beholder" → {"category":"bestiary","query":"beholder"}
+"Fireball spell" → {"category":"spells","query":"fireball"}
+"How does grappling work" → {"category":"actions","query":"grapple"}
+```
+
+### 2. Voice Response Text Embeds
+
+Voice responses now **always post a text embed** alongside the spoken response. This provides:
+
+- **Full content** - Complete lookup results (voice is shortened)
+- **Pagination** - Interactive buttons for long content (◀ Previous | Next ▶)
+- **Screenshots** - Embedded images from 5e.tools where available
+- **Source links** - Direct links to reference sites
+- **Accessibility** - Fallback if voice is hard to hear
+
+### 3. Web Search in Text Chat
+
+Discord text chat now has **parity with voice** for web searches:
+
+- Mention FumbleBot with a D&D question
+- Haiku classifies and routes to the appropriate search tool
+- Results displayed with pagination and source links
 
 **Example Interactions:**
 
 ```
-User: "Hey FumbleBot, what's the range of Fireball?"
-FumbleBot: "Fireball has a range of 150 feet. I have the full spell description in my knowledge base if you need it."
+User: "@FumbleBot what's the range of Fireball?"
+FumbleBot: [Posts embed with full spell details, screenshot, and 5e.tools link]
 
-User: "Hey FumbleBot, how does grappling work?"
-FumbleBot: "I can search my knowledge base for the grappling rules. Let me fetch that for you..."
+User: "@FumbleBot how does grappling work?"
+FumbleBot: [Posts embed with action rules and pagination buttons]
 
 User: "Generate an NPC tavern keeper"
 FumbleBot: "I can generate a detailed NPC for that tavern keeper with backstory, personality, and stats..."
 ```
 
-### 2. Web Fetch Tool
+### 4. Web Tools
 
-New `web_fetch` MCP tool allows FumbleBot to access external TTRPG resources:
+FumbleBot has multiple web tools for accessing TTRPG resources:
+
+#### `web_fetch` - Direct URL Fetch
+Fetches content from a specific URL with AI-powered extraction.
 
 **Supported Sites:**
 - **5e.tools** - D&D 5e reference
@@ -48,13 +80,7 @@ New `web_fetch` MCP tool allows FumbleBot to access external TTRPG resources:
 - **Cypher System** - Cypher tools and references
 - **General** - Any TTRPG website
 
-**Features:**
-- AI-powered content extraction
-- Markdown formatting
-- Automatic source linkbacks
-- Spell cards, NPC stat blocks, tables
-
-**Usage via MCP:**
+**Usage:**
 ```typescript
 {
   tool: "web_fetch",
@@ -66,7 +92,59 @@ New `web_fetch` MCP tool allows FumbleBot to access external TTRPG resources:
 }
 ```
 
-### 3. Context-Specific Prompts
+#### `web_search_5etools` - D&D 5e Search
+Search 5e.tools for D&D 5e spells, items, monsters, classes, races, feats, etc.
+
+**Categories:** spells, items, bestiary, classes, races, feats, backgrounds, conditions, actions
+
+**Usage:**
+```typescript
+{
+  tool: "web_search_5etools",
+  args: { query: "fireball", category: "spells" }
+}
+```
+
+#### `web_search_cypher_srd` - Cypher System Search
+Search Old Gus' Cypher System SRD for rules, abilities, types, descriptors, foci, and cyphers.
+
+**Usage:**
+```typescript
+{
+  tool: "web_search_cypher_srd",
+  args: { query: "bears a halo of fire" }
+}
+```
+
+#### `web_search_forgotten_realms` - Lore Search
+Search the Forgotten Realms Wiki for D&D lore, characters, locations, deities, and items.
+
+**Usage:**
+```typescript
+{
+  tool: "web_search_forgotten_realms",
+  args: { query: "Waterdeep" }
+}
+```
+
+#### `web_search_dndbeyond_support` - D&D Beyond Help
+Search D&D Beyond Support for troubleshooting, account help, and FAQ.
+
+**Usage:**
+```typescript
+{
+  tool: "web_search_dndbeyond_support",
+  args: { query: "share content with campaign" }
+}
+```
+
+**Common Features:**
+- AI-powered content extraction
+- Markdown formatting
+- Automatic source linkbacks
+- Spell cards, NPC stat blocks, tables
+
+### 5. Context-Specific Prompts
 
 The system prompt adapts based on the question:
 
@@ -78,7 +156,7 @@ The system prompt adapts based on the question:
 | NPC/lore | "You can generate NPCs and lore. Suggest using these tools" |
 | Default | Short prompt about available tools |
 
-### 4. Source Linkbacks & Rich Formatting
+### 6. Source Linkbacks & Rich Formatting
 
 All responses now include:
 - **Linkbacks**: `Source: [URL](URL)` for external content
@@ -127,11 +205,17 @@ All responses now include:
 
 ### New Files
 - **src/services/discord/voice/mcp-tools-prompt.ts** - MCP tools system prompt
+- **src/services/discord/utils/pagination.ts** - Pagination utilities for long content
+- **src/services/web/screenshot.ts** - Screenshot capture for 5e.tools pages
 - **docs/agent/MCP_TOOLS_AND_WEB_FETCH.md** - This documentation
 
 ### Modified Files
-- **src/services/discord/voice/assistant.ts** - Added MCP context prompts
-- **src/mcp/fumblebot-mcp-server.ts** - Added web_fetch tool
+- **src/services/discord/voice/assistant.ts** - Voice response text embeds, pagination, web search integration
+- **src/services/discord/handlers/message.ts** - Haiku-based lookup classification, web search in text chat
+- **src/mcp/fumblebot-mcp-server.ts** - Web search tool handlers
+- **src/mcp/handlers/web.ts** - Web search implementations
+- **src/mcp/tools/definitions.ts** - New web_search_* tool definitions
+- **src/services/web/fetch.ts** - Enhanced web fetch with screenshot support
 - **.env.example** - Added voice configuration section
 - **.env.fumblebot** - Added Core proxy and voice config
 
@@ -179,20 +263,22 @@ FumbleBot's MCP server now exposes 8 categories of tools:
 | `container_*` | terminal | Sandboxed containers |
 | `fumble_*` | dice, NPC, lore | FumbleBot utilities |
 | `kb_*` | search, get, list | Knowledge base (362 articles) |
-| `web_*` | fetch | External TTRPG sites |
+| `web_*` | fetch, search_5etools, search_cypher_srd, search_forgotten_realms, search_dndbeyond_support | External TTRPG sites & search |
 
 ---
 
 ## Benefits
 
-✅ **Smarter Responses** - Voice assistant knows what tools it has
-✅ **External Resources** - Can fetch from 5e.tools, D&D Beyond, FoundryVTT KB
+✅ **AI Classification** - Haiku intelligently routes lookups to correct search
+✅ **Voice/Text Parity** - Same powerful search in voice and text chat
+✅ **Text Embeds** - Every voice response includes full text for accessibility
+✅ **Pagination** - Long content split into navigable pages with buttons
+✅ **Screenshots** - 5e.tools spell cards and monster stat blocks embedded
+✅ **External Search** - 5e.tools, Cypher SRD, Forgotten Realms, D&D Beyond Support
 ✅ **Source Citations** - Always links back to original source
 ✅ **Rich Formatting** - Spell cards, NPC stat blocks, tables
-✅ **Context-Aware** - Adapts prompt based on question type
 ✅ **362 KB Articles** - Internal knowledge base ready
 ✅ **Multi-System** - D&D 5e, Cypher, FoundryVTT, PC games
-✅ **Tool Suggestions** - Proactively suggests relevant tools
 
 ---
 
@@ -206,5 +292,5 @@ FumbleBot's MCP server now exposes 8 categories of tools:
 
 ---
 
-**Status**: Core functionality complete, awaiting Deepgram API key
-**Last Updated**: 2025-12-01
+**Status**: Complete with web search tools
+**Last Updated**: 2025-12-03

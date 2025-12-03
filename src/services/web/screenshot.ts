@@ -256,6 +256,115 @@ export class WebScreenshotService {
       ...options,
     });
   }
+
+  /**
+   * Fetch rendered content from 5e.tools using Playwright
+   * Returns the text content of the main stat block after JavaScript renders
+   */
+  async fetch5eToolsContent(
+    category: string,
+    query: string
+  ): Promise<{ success: boolean; content: string; url: string; screenshot?: string }> {
+    // Ensure browser is initialized
+    if (!this.browser) {
+      await this.initialize();
+    }
+
+    if (!this.browser) {
+      throw new Error('Failed to initialize browser');
+    }
+
+    // Build URL with hash for direct navigation
+    const searchTerm = query.toLowerCase().replace(/\s+/g, '%20');
+    const url = `https://5e.tools/${category}.html#${searchTerm}`;
+
+    console.log(`[WebScreenshot] Fetching 5e.tools content: ${url}`);
+
+    const page: Page = await this.browser.newPage({
+      viewport: { width: 1280, height: 900 },
+    });
+
+    try {
+      // Navigate and wait for JavaScript to render
+      await page.goto(url, {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+
+      // Wait for content to load (5e.tools loads data asynchronously)
+      await page.waitForTimeout(3000);
+
+      // Try to find and extract the stat block content
+      // 5e.tools uses different selectors for different content types
+      const selectors = [
+        '.stats',                    // Main stat block
+        '.statsBlockSectionInner',   // Section content
+        '#pagecontent',              // Page content area
+        '.rd__b',                    // Reading block
+        '.hwin',                     // Hover window content
+        'main',                      // Fallback to main
+      ];
+
+      let textContent = '';
+      let screenshotBase64 = '';
+
+      for (const selector of selectors) {
+        try {
+          const element = await page.$(selector);
+          if (element) {
+            // Get text content
+            const text = await element.textContent();
+            if (text && text.trim().length > 100) {
+              textContent = text.trim();
+
+              // Also take a screenshot of this element
+              try {
+                const screenshotBuffer = await element.screenshot();
+                screenshotBase64 = screenshotBuffer.toString('base64');
+              } catch (e) {
+                // Screenshot failed, continue without it
+              }
+              break;
+            }
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      // If no content found in specific elements, get the whole page
+      if (!textContent) {
+        textContent = await page.textContent('body') || '';
+        // Take full page screenshot as fallback
+        const screenshotBuffer = await page.screenshot({ fullPage: false });
+        screenshotBase64 = screenshotBuffer.toString('base64');
+      }
+
+      // Clean up the content
+      textContent = textContent
+        .replace(/\s+/g, ' ')           // Normalize whitespace
+        .replace(/\n{3,}/g, '\n\n')     // Max 2 newlines
+        .trim();
+
+      console.log(`[WebScreenshot] Extracted ${textContent.length} chars from 5e.tools`);
+
+      return {
+        success: textContent.length > 50,
+        content: textContent,
+        url,
+        screenshot: screenshotBase64 || undefined,
+      };
+    } catch (error) {
+      console.error('[WebScreenshot] Error fetching 5e.tools content:', error);
+      return {
+        success: false,
+        content: '',
+        url,
+      };
+    } finally {
+      await page.close();
+    }
+  }
 }
 
 // Singleton instance

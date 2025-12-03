@@ -395,3 +395,112 @@ export const WEB_FETCH_ALLOWED_DOMAINS = [
   'foundryvtt.com/kb/',
   'callmepartario.github.io',
 ] as const;
+
+// =============================================================================
+// Adventure Terminal Types
+// =============================================================================
+
+/** Container/terminal status */
+export type TerminalStatus = 'running' | 'stopped' | 'error' | 'starting';
+
+/** Request to start an adventure terminal */
+export interface TerminalStartRequest {
+  /** Discord guild ID */
+  guildId: string;
+  /** Discord channel ID */
+  channelId: string;
+  /** User who started the terminal */
+  userId?: string;
+  /** Username for terminal prompt */
+  userName?: string;
+}
+
+/** Response from starting a terminal */
+export interface TerminalStartResponse {
+  /** Unique container ID */
+  containerId: string;
+  /** Container status */
+  status: TerminalStatus;
+  /** Port the container is running on (internal) */
+  port: number;
+  /** When the container was created */
+  createdAt: string;
+  /** WebSocket URL for direct terminal connection */
+  wsUrl?: string;
+}
+
+/** Request to stop a terminal */
+export interface TerminalStopRequest {
+  /** Discord guild ID */
+  guildId: string;
+  /** Discord channel ID */
+  channelId: string;
+}
+
+/** Response from stopping a terminal */
+export interface TerminalStopResponse {
+  /** Whether stop was successful */
+  success: boolean;
+  /** Status message */
+  message?: string;
+}
+
+/** Response from terminal status check */
+export interface TerminalStatusResponse {
+  /** Whether terminal exists */
+  exists: boolean;
+  /** Container ID if exists */
+  containerId?: string;
+  /** Container status */
+  status?: TerminalStatus;
+  /** Port if running */
+  port?: number;
+  /** When the container was created */
+  createdAt?: string;
+  /** Container uptime in seconds */
+  uptime?: number;
+}
+
+/** Request to execute a command in the terminal */
+export interface TerminalExecRequest {
+  /** Discord guild ID */
+  guildId: string;
+  /** Discord channel ID */
+  channelId: string;
+  /** Command to execute */
+  command: string;
+  /** Timeout in milliseconds (default: 30000) */
+  timeout?: number;
+  /** Working directory override */
+  cwd?: string;
+}
+
+/** Response from executing a command */
+export interface TerminalExecResponse {
+  /** Whether execution was successful */
+  success: boolean;
+  /** Standard output */
+  stdout: string;
+  /** Standard error output */
+  stderr: string;
+  /** Exit code */
+  exitCode: number;
+  /** Execution time in milliseconds */
+  executionTime?: number;
+}
+
+/** Terminal session info for listing */
+export interface TerminalSessionInfo {
+  /** Container ID */
+  containerId: string;
+  /** Guild ID */
+  guildId: string;
+  /** Channel ID */
+  channelId: string;
+  /** Status */
+  status: TerminalStatus;
+  /** Creation time */
+  createdAt: string;
+  /** Uptime in seconds */
+  uptime: number;
+}

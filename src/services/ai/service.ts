@@ -107,7 +107,7 @@ export class AIService {
   /**
    * Generate DM/GM response for TTRPG scenarios
    */
-  async dmResponse(scenario: string, system = 'D&D 5e', tone = 'dramatic'): Promise<string> {
+  async dmResponse(scenario: string, system = '5e', tone = 'dramatic'): Promise<string> {
     const result = await this.chat(
       [{ role: 'user', content: scenario }],
       `You are an experienced Dungeon Master for ${system}. Generate a ${tone} response.
@@ -181,7 +181,7 @@ Include vivid descriptions and suggest any relevant dice rolls or mechanics.`,
   /**
    * Look up TTRPG rules
    */
-  async lookupRule(query: string, system = 'D&D 5e'): Promise<string> {
+  async lookupRule(query: string, system = '5e'): Promise<string> {
     const result = await this.lookup(
       query,
       `You are a ${system} rules expert. Provide accurate, concise rule explanations.
@@ -442,7 +442,7 @@ Respond with just the action and a one-sentence reasoning.`,
 
       const result = await this.lookup(
         summarizePrompt,
-        'You are a TTRPG assistant. Provide concise, accurate summaries of game content. Include key stats, mechanics, and descriptions. Always cite the source.',
+        'You are a TTRPG assistant. Provide concise, accurate summaries of game content. Include key stats, mechanics, and descriptions. IMPORTANT: Always include source citations with book name and page number when available (e.g., "PHB p.241" or "Monster Manual, p.166").',
         { maxTokens: options?.maxTokens ?? 800 }
       );
 
@@ -464,11 +464,12 @@ Respond with just the action and a one-sentence reasoning.`,
 
   /**
    * Search 5e.tools for D&D 5e content
+   * Returns content, source URL, and optional screenshot
    */
   async search5eTools(
     query: string,
     category: string = 'spells'
-  ): Promise<{ success: boolean; content: string; source?: string; error?: string }> {
+  ): Promise<{ success: boolean; content: string; source?: string; screenshot?: string; error?: string }> {
     const fetchResult = await webFetchService.search5eTools(query, category);
 
     if (!fetchResult.success) {
@@ -485,27 +486,65 @@ Respond with just the action and a one-sentence reasoning.`,
 
       const result = await this.lookup(
         extractPrompt,
-        `You are a D&D 5e expert. Extract and format ${category} information accurately. Include:
-- Name and basic info (level, school, type)
-- Key stats and mechanics
-- Description
-- Any relevant notes
-Keep it concise but complete. If the content doesn't contain the requested information, say so.`,
-        { maxTokens: 800 }
+        `Extract ${category} info from 5e.tools. Format cleanly:
+- Name, level/CR, type
+- Key mechanics (stats, damage, duration, etc.)
+- Brief description
+- Source (PHB p.X, MM p.X, etc.)
+
+Be concise. No fluff. Just the facts.`,
+        { maxTokens: 600 }
       );
 
       return {
         success: true,
         content: result.content + `\n\nSource: ${fetchResult.source}`,
         source: fetchResult.source,
+        screenshot: fetchResult.screenshot,
       };
     } catch (error) {
       return {
         success: true,
         content: fetchResult.content || '',
         source: fetchResult.source,
+        screenshot: fetchResult.screenshot,
       };
     }
+  }
+
+  /**
+   * Search any Fandom wiki for lore content
+   * @param wiki - The wiki subdomain (e.g., 'forgottenrealms', 'eberron', 'criticalrole')
+   * @param query - The search query
+   */
+  async searchFandomWiki(
+    wiki: string,
+    query: string
+  ): Promise<{ success: boolean; content: string; source?: string; error?: string }> {
+    const fetchResult = await webFetchService.searchFandomWiki(wiki, query);
+
+    if (!fetchResult.success) {
+      return {
+        success: false,
+        content: '',
+        error: fetchResult.error,
+      };
+    }
+
+    return {
+      success: true,
+      content: fetchResult.content || '',
+      source: fetchResult.source,
+    };
+  }
+
+  /**
+   * Search Forgotten Realms Wiki for lore content (convenience wrapper)
+   */
+  async searchForgottenRealms(
+    query: string
+  ): Promise<{ success: boolean; content: string; source?: string; error?: string }> {
+    return this.searchFandomWiki('forgottenrealms', query);
   }
 
   /**

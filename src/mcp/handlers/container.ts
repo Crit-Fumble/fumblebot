@@ -1,6 +1,6 @@
 /**
  * Container Tool Handlers
- * Handles sandboxed terminal container operations
+ * Handles adventure terminal container operations
  */
 
 import { getContainerClient, type UserContext } from '../../services/container/index.js';

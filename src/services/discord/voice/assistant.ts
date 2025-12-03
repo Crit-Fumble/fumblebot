@@ -15,8 +15,16 @@
  */
 
 import { EventEmitter } from 'events';
-import { AttachmentBuilder, EmbedBuilder, ActivityType } from 'discord.js';
-import type { VoiceBasedChannel, GuildMember, TextChannel, Client, VoiceState } from 'discord.js';
+import {
+  AttachmentBuilder,
+  EmbedBuilder,
+  ActivityType,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
+} from 'discord.js';
+import type { VoiceBasedChannel, GuildMember, TextChannel, Client, VoiceState, ButtonInteraction } from 'discord.js';
 import { voiceClient, VoiceClient } from './client.js';
 import { voiceListener, VoiceListener } from './listener.js';
 import { deepgramListener, DeepgramListener } from './deepgram-listener.js';
@@ -26,6 +34,7 @@ import { AIService } from '../../ai/service.js';
 import OpenAI from 'openai';
 import { loadOpenAIConfig, getVoiceConfig } from '../../../config.js';
 import { getMCPPromptForContext, MCP_TOOLS_SHORT_PROMPT } from './mcp-tools-prompt.js';
+import { needsPagination } from '../utils/pagination.js';
 
 /** Intent parsing result from LLM */
 export interface IntentResult {
@@ -256,7 +265,7 @@ RULES:
 1. ONLY respond if:
    - User says your name ("FumbleBot", "Fumble", "Hey Fumblebot")
    - User asks to roll dice ("roll a d20", "roll initiative", "give me a strength check")
-   - User asks a D&D rules question
+   - User asks a TTRPG rules question
    - User asks to search Discord messages ("what was that NPC's name", "find the message about X", "search for Y")
    - User asks to post something to a channel ("post summary in logs", "send that to session-notes")
    - You have CRITICAL info to add (rarely - don't interrupt normal conversation)
@@ -716,28 +725,28 @@ Provide a concise answer (1-3 sentences). If asking about a name/NPC/item, give 
 
   /**
    * Handle transcription from either listener
+   * Only records transcriptions when in 'transcribe' mode
    */
   private async handleTranscription(
     guildId: string,
     userId: string,
     text: string,
-    source: 'deepgram' | 'whisper'
+    _source: 'deepgram' | 'whisper'
   ): Promise<void> {
-    if (this.config.logTranscriptions) {
-      console.log(`[VoiceAssistant] Transcription from ${userId} (${source}): "${text}"`);
-      this.emit('transcription', { userId, text, timestamp: Date.now(), source });
-    }
+    const state = this.activeGuilds.get(guildId);
 
-    // Add to transcript for final session summary (but don't process for intent)
-    await this.addTranscriptionEntry(guildId, userId, text, false);
+    // Only record transcriptions in explicit transcribe mode
+    if (state?.mode === 'transcribe') {
+      await this.addTranscriptionEntry(guildId, userId, text, false);
+    }
 
     // Note: Intent detection is disabled for general transcriptions
     // FumbleBot only responds when explicitly addressed via wake word
-    // This prevents interrupting normal player conversation
   }
 
   /**
    * Handle a detected intent (from fast path or LLM)
+   * Always posts a text embed alongside voice response for accessibility
    */
   private async handleIntent(
     guildId: string,
@@ -746,6 +755,8 @@ Provide a concise answer (1-3 sentences). If asking about a name/NPC/item, give 
   ): Promise<void> {
     let response: string | null = null;
     let spokenResponse: string | null = null;
+    let screenshot: string | undefined = undefined;
+    let sourceUrl: string | undefined = undefined;
 
     // Show typing indicator for slow operations
     let processingMsg: import('discord.js').Message | null = null;
@@ -823,6 +834,8 @@ ${transcriptText.slice(0, 3000)}`,
       const lookupResult = await this.lookupRuleWithWebSearch(intent.request);
       response = lookupResult.content;
       spokenResponse = lookupResult.spoken;
+      screenshot = lookupResult.screenshot;
+      sourceUrl = lookupResult.source;
     } else if (intent.suggestedResponse) {
       response = intent.suggestedResponse;
     } else if (intent.request) {
@@ -845,17 +858,313 @@ ${transcriptText.slice(0, 3000)}`,
         await this.speakResponse(guildId, ttsText);
       }
 
-      // Only post to text channel for search results or post confirmations
-      const shouldPostText = intent.intent === 'search_messages' || intent.intent === 'post_to_channel';
-      if (shouldPostText && state?.textChannel) {
-        const embed = new EmbedBuilder()
-          .setDescription(response)
-          .setColor(0x7c3aed)
-          .setFooter({ text: `Voice request from ${state.transcript.entries.at(-1)?.username || 'Unknown'}` });
-
-        await state.textChannel.send({ embeds: [embed] });
+      // Always post a text embed to the voice channel's text chat
+      // This provides: transcription, screenshots, links, and fallback if voice cuts out
+      if (state?.textChannel) {
+        await this.postVoiceResponseEmbed(state.textChannel, {
+          response,
+          spokenResponse,
+          screenshot,
+          sourceUrl,
+          intent,
+          requester: state.transcript.entries.at(-1)?.username || 'Unknown',
+        });
       }
     }
+  }
+
+  /**
+   * Post a rich embed to the text channel with the voice response
+   * Includes: transcription, screenshot, source link, and pagination for long content
+   */
+  private async postVoiceResponseEmbed(
+    textChannel: TextChannel,
+    data: {
+      response: string;
+      spokenResponse: string | null;
+      screenshot?: string;
+      sourceUrl?: string;
+      intent: IntentResult;
+      requester: string;
+    }
+  ): Promise<void> {
+    const { response, spokenResponse, screenshot, sourceUrl, intent, requester } = data;
+
+    // Set title based on intent type
+    const intentTitles: Record<string, string> = {
+      roll_dice: '🎲 Dice Roll',
+      lookup_rule: '📖 Rule Lookup',
+      question: '❓ Question',
+      greeting: '👋 Greeting',
+      goodbye: '👋 Goodbye',
+      search_messages: '🔍 Message Search',
+      post_to_channel: '📝 Posted',
+      other: '💬 Response',
+    };
+    const title = intentTitles[intent.intent || 'other'] || '💬 Response';
+
+    // Check if we need pagination (content > 3500 chars)
+    const maxCharsPerPage = 3500;
+    const usePagination = needsPagination(response, maxCharsPerPage);
+
+    if (usePagination) {
+      // Split content into pages
+      const pages = this.splitIntoPages(response, maxCharsPerPage);
+      let currentPage = 0;
+
+      const buildPageEmbed = (pageIndex: number): EmbedBuilder => {
+        const embed = new EmbedBuilder()
+          .setTitle(title)
+          .setDescription(pages[pageIndex])
+          .setColor(0x7c3aed)
+          .setTimestamp();
+
+        // Only show spoken summary on first page
+        if (pageIndex === 0 && spokenResponse && spokenResponse !== response && spokenResponse.length < 1024) {
+          embed.addFields({
+            name: '🔊 Voice Summary',
+            value: spokenResponse,
+            inline: false,
+          });
+        }
+
+        // Show source on all pages
+        if (sourceUrl) {
+          embed.addFields({
+            name: '🔗 Source',
+            value: `[View on 5e.tools](${sourceUrl})`,
+            inline: true,
+          });
+        }
+
+        const pageInfo = `Page ${pageIndex + 1}/${pages.length}`;
+        embed.setFooter({ text: `Voice request from ${requester} • ${pageInfo}` });
+
+        return embed;
+      };
+
+      const buildButtons = (pageIndex: number): ActionRowBuilder<ButtonBuilder> => {
+        const row = new ActionRowBuilder<ButtonBuilder>();
+
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId('voice_page_first')
+            .setLabel('⏮')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(pageIndex === 0)
+        );
+
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId('voice_page_prev')
+            .setLabel('◀ Previous')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(pageIndex === 0)
+        );
+
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId('voice_page_indicator')
+            .setLabel(`${pageIndex + 1} / ${pages.length}`)
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true)
+        );
+
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId('voice_page_next')
+            .setLabel('Next ▶')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(pageIndex === pages.length - 1)
+        );
+
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId('voice_page_last')
+            .setLabel('⏭')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(pageIndex === pages.length - 1)
+        );
+
+        return row;
+      };
+
+      // Prepare initial message options
+      const messageOptions: {
+        embeds: EmbedBuilder[];
+        components: ActionRowBuilder<ButtonBuilder>[];
+        files?: AttachmentBuilder[];
+      } = {
+        embeds: [buildPageEmbed(0)],
+        components: [buildButtons(0)],
+      };
+
+      // Add screenshot to first page if available
+      if (screenshot) {
+        try {
+          const screenshotBuffer = Buffer.from(screenshot, 'base64');
+          const attachment = new AttachmentBuilder(screenshotBuffer, {
+            name: 'lookup-result.png',
+            description: 'Screenshot of the lookup result from 5e.tools',
+          });
+          messageOptions.files = [attachment];
+          messageOptions.embeds[0].setImage('attachment://lookup-result.png');
+        } catch (error) {
+          console.error('[VoiceAssistant] Failed to attach screenshot:', error);
+        }
+      }
+
+      try {
+        const message = await textChannel.send(messageOptions);
+        console.log(`[VoiceAssistant] Posted paginated voice response (${pages.length} pages)`);
+
+        // Create collector for button interactions
+        const collector = message.createMessageComponentCollector({
+          componentType: ComponentType.Button,
+          time: 5 * 60 * 1000, // 5 minute timeout
+        });
+
+        collector.on('collect', async (interaction: ButtonInteraction) => {
+          const action = interaction.customId;
+
+          switch (action) {
+            case 'voice_page_first':
+              currentPage = 0;
+              break;
+            case 'voice_page_prev':
+              currentPage = Math.max(0, currentPage - 1);
+              break;
+            case 'voice_page_next':
+              currentPage = Math.min(pages.length - 1, currentPage + 1);
+              break;
+            case 'voice_page_last':
+              currentPage = pages.length - 1;
+              break;
+            default:
+              return;
+          }
+
+          await interaction.update({
+            embeds: [buildPageEmbed(currentPage)],
+            components: [buildButtons(currentPage)],
+          });
+        });
+
+        collector.on('end', async () => {
+          // Remove buttons when collector expires
+          try {
+            await message.edit({
+              embeds: [buildPageEmbed(currentPage)],
+              components: [], // Remove buttons
+            });
+          } catch (e) {
+            // Message might have been deleted
+          }
+        });
+      } catch (error) {
+        console.error('[VoiceAssistant] Failed to post paginated voice response:', error);
+      }
+    } else {
+      // Simple embed without pagination
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(response)
+        .setColor(0x7c3aed)
+        .setTimestamp();
+
+      if (spokenResponse && spokenResponse !== response && spokenResponse.length < 1024) {
+        embed.addFields({
+          name: '🔊 Voice Summary',
+          value: spokenResponse,
+          inline: false,
+        });
+      }
+
+      if (sourceUrl) {
+        embed.addFields({
+          name: '🔗 Source',
+          value: `[View on 5e.tools](${sourceUrl})`,
+          inline: true,
+        });
+      }
+
+      embed.setFooter({ text: `Voice request from ${requester}` });
+
+      const messageOptions: { embeds: EmbedBuilder[]; files?: AttachmentBuilder[] } = {
+        embeds: [embed],
+      };
+
+      if (screenshot) {
+        try {
+          const screenshotBuffer = Buffer.from(screenshot, 'base64');
+          const attachment = new AttachmentBuilder(screenshotBuffer, {
+            name: 'lookup-result.png',
+            description: 'Screenshot of the lookup result from 5e.tools',
+          });
+          messageOptions.files = [attachment];
+          embed.setImage('attachment://lookup-result.png');
+        } catch (error) {
+          console.error('[VoiceAssistant] Failed to attach screenshot:', error);
+        }
+      }
+
+      try {
+        await textChannel.send(messageOptions);
+        console.log(`[VoiceAssistant] Posted voice response embed to text channel`);
+      } catch (error) {
+        console.error('[VoiceAssistant] Failed to post voice response embed:', error);
+      }
+    }
+  }
+
+  /**
+   * Split content into pages for pagination
+   */
+  private splitIntoPages(content: string, maxChars: number): string[] {
+    if (content.length <= maxChars) {
+      return [content];
+    }
+
+    const pages: string[] = [];
+    let remaining = content;
+
+    while (remaining.length > 0) {
+      if (remaining.length <= maxChars) {
+        pages.push(remaining);
+        break;
+      }
+
+      let breakPoint = maxChars;
+
+      // Try paragraph break first
+      const paragraphBreak = remaining.lastIndexOf('\n\n', maxChars);
+      if (paragraphBreak > maxChars * 0.5) {
+        breakPoint = paragraphBreak;
+      } else {
+        // Try line break
+        const lineBreak = remaining.lastIndexOf('\n', maxChars);
+        if (lineBreak > maxChars * 0.5) {
+          breakPoint = lineBreak;
+        } else {
+          // Try sentence break
+          const sentenceBreak = remaining.lastIndexOf('. ', maxChars);
+          if (sentenceBreak > maxChars * 0.5) {
+            breakPoint = sentenceBreak + 1;
+          } else {
+            // Try space
+            const spaceBreak = remaining.lastIndexOf(' ', maxChars);
+            if (spaceBreak > maxChars * 0.5) {
+              breakPoint = spaceBreak;
+            }
+          }
+        }
+      }
+
+      pages.push(remaining.slice(0, breakPoint).trim());
+      remaining = remaining.slice(breakPoint).trim();
+    }
+
+    return pages;
   }
 
   /**
@@ -884,50 +1193,39 @@ ${mcpContext}`,
 
   /**
    * Lookup a D&D rule/spell/monster/item using web search
-   * Returns both formatted text and a spoken summary
+   * Returns formatted text, spoken summary, and optional screenshot
    */
-  private async lookupRuleWithWebSearch(request: string): Promise<{ content: string; spoken: string }> {
-    const requestLower = request.toLowerCase();
+  private async lookupRuleWithWebSearch(request: string): Promise<{ content: string; spoken: string; screenshot?: string; source?: string }> {
     console.log(`[VoiceAssistant] Looking up rule with web search: "${request}"`);
 
-    // Determine the category based on keywords
-    // Default to bestiary for generic "what is X" questions
+    // Use Haiku to classify the request intelligently
     let category = 'bestiary';
     let searchQuery = request;
 
-    // Detect category from request - check spells first since they're common
-    if (requestLower.includes('spell') || requestLower.includes('cast') || requestLower.includes('cantrip') || requestLower.includes('magic')) {
-      category = 'spells';
-      searchQuery = request.replace(/spell|cast|cantrip|what is|tell me about|how does.*work/gi, '').trim();
-    } else if (requestLower.includes('monster') || requestLower.includes('creature') || requestLower.includes('bestiary')) {
-      category = 'bestiary';
-      searchQuery = request.replace(/monster|creature|bestiary|what is a|tell me about/gi, '').trim();
-    } else if (requestLower.includes('item') || requestLower.includes('weapon') || requestLower.includes('armor') || requestLower.includes('equipment')) {
-      category = 'items';
-      searchQuery = request.replace(/item|weapon|armor|equipment|what is|tell me about/gi, '').trim();
-    } else if (requestLower.includes('class') || requestLower.includes('subclass')) {
-      category = 'classes';
-      searchQuery = request.replace(/class|subclass|what is|tell me about/gi, '').trim();
-    } else if (requestLower.includes('race') || requestLower.includes('species')) {
-      category = 'races';
-      searchQuery = request.replace(/race|species|what is|tell me about/gi, '').trim();
-    } else if (requestLower.includes('feat')) {
-      category = 'feats';
-      searchQuery = request.replace(/feat|what is|tell me about/gi, '').trim();
-    } else if (requestLower.includes('background')) {
-      category = 'backgrounds';
-      searchQuery = request.replace(/background|what is|tell me about/gi, '').trim();
-    } else if (requestLower.includes('condition') || requestLower.includes('disease')) {
-      category = 'conditions';
-      searchQuery = request.replace(/condition|disease|what is|tell me about/gi, '').trim();
-    } else {
-      // Default: try to extract the main subject for bestiary search
-      searchQuery = request.replace(/what is|tell me about|how does|look up|search for|find/gi, '').trim();
-    }
+    try {
+      const classificationResult = await this.aiService.lookup(
+        request,
+        `Classify this D&D query. Respond with ONLY JSON (no markdown):
+{"category":"spells|bestiary|items|classes|races|feats|backgrounds|conditions|actions","query":"search term"}
 
-    // Clean up the search query
-    searchQuery = searchQuery.replace(/\?/g, '').trim();
-    if (!searchQuery) searchQuery = request;
+Categories: spells (magic), bestiary (monsters/creatures), items (weapons/armor/equipment), classes, races, feats, backgrounds, conditions, actions (rules/mechanics/grappling/chase)
+
+Examples:
+"Chase rules" → {"category":"actions","query":"chase"}
+"goblin stats" → {"category":"bestiary","query":"goblin"}
+"fireball" → {"category":"spells","query":"fireball"}`,
+        { maxTokens: 80 }
+      );
+
+      const cleaned = classificationResult.content.trim().replace(/```json\n?|\n?```/g, '');
+      const parsed = JSON.parse(cleaned);
+      category = parsed.category || 'bestiary';
+      searchQuery = parsed.query || request;
+      console.log(`[VoiceAssistant] Haiku classified: category="${category}", query="${searchQuery}"`);
+    } catch (error) {
+      console.error('[VoiceAssistant] Haiku classification failed, using request as-is:', error);
+      searchQuery = request.replace(/what is|tell me about|how does|look up|search for|find|\?/gi, '').trim() || request;
+    }
 
     console.log(`[VoiceAssistant] Searching 5e.tools for "${searchQuery}" in category "${category}"`);
 
@@ -937,14 +1235,16 @@ ${mcpContext}`,
       if (result.success && result.content) {
         // Generate a spoken summary (shorter for TTS)
         const spokenResult = await this.aiService.lookup(
-          `Summarize this D&D rule/spell/monster in 1-2 sentences for voice response. Be concise but include the key mechanic:\n\n${result.content}`,
-          'You are FumbleBot giving a brief voice answer. Keep it under 30 words.',
-          { maxTokens: 100 }
+          `Summarize this D&D rule/spell/monster in 1-2 sentences for voice response. Be concise but include the key mechanic. End with a brief source mention like "from the Player's Handbook" if available:\n\n${result.content}`,
+          'You are FumbleBot giving a brief voice answer. Keep it under 35 words. Include the source book name at the end if mentioned.',
+          { maxTokens: 120 }
         );
 
         return {
           content: result.content,
           spoken: spokenResult.content,
+          screenshot: result.screenshot,
+          source: result.source,
         };
       } else {
         // Fallback to general AI response
@@ -997,10 +1297,8 @@ ${mcpContext}`,
       isCommand,
     });
 
-    console.log(`[VoiceAssistant] Added transcript entry: ${username}: "${text}"`);
-
-    // Update live subtitles
-    if (this.config.liveSubtitlesEnabled) {
+    // Update live subtitles (only in transcribe mode)
+    if (this.config.liveSubtitlesEnabled && state.mode === 'transcribe') {
       await this.updateLiveSubtitles(guildId, username, text, isCommand);
     }
   }
@@ -1393,11 +1691,12 @@ ${mcpContext}`,
   }
 
   /**
-   * Generate and post session summary with AI analysis
+   * Generate and post session summary with AI analysis (only in transcribe mode)
    */
   private async postSessionSummary(guildId: string): Promise<void> {
     const state = this.activeGuilds.get(guildId);
     if (!state || !state.textChannel || state.transcript.entries.length === 0) return;
+    if (state.mode !== 'transcribe') return; // Only post summaries in transcribe mode
 
     // Finalize transcript
     state.transcript.endTime = Date.now();
@@ -1466,18 +1765,18 @@ ${transcriptText.slice(0, 2000)}`,
 
     try {
       await state.textChannel.send({ embeds: [embed], files: [attachment] });
-      console.log(`[VoiceAssistant] Posted session summary (${state.transcript.entries.length} entries)`);
     } catch (error) {
       console.error('[VoiceAssistant] Failed to post session summary:', error);
     }
   }
 
   /**
-   * Generate and post full session transcript as markdown file
+   * Generate and post full session transcript as markdown file (only in transcribe mode)
    */
   private async postFullTranscript(guildId: string): Promise<void> {
     const state = this.activeGuilds.get(guildId);
     if (!state || !state.textChannel || state.transcript.entries.length === 0) return;
+    if (state.mode !== 'transcribe') return; // Only post transcripts in transcribe mode
 
     // Finalize transcript
     state.transcript.endTime = Date.now();
@@ -1520,7 +1819,6 @@ ${transcriptText.slice(0, 2000)}`,
 
     try {
       await state.textChannel.send({ embeds: [embed], files: [attachment] });
-      console.log(`[VoiceAssistant] Posted full transcript (${state.transcript.entries.length} entries)`);
     } catch (error) {
       console.error('[VoiceAssistant] Failed to post full transcript:', error);
     }
@@ -1744,11 +2042,14 @@ ${transcriptText.slice(0, 2000)}`,
   }
 
   /**
-   * Add FumbleBot's response to the session transcript
+   * Add FumbleBot's response to the session transcript (only in transcribe mode)
    */
   private async addBotResponseToTranscript(guildId: string, text: string): Promise<void> {
     const state = this.activeGuilds.get(guildId);
     if (!state) return;
+
+    // Only record bot responses in transcribe mode
+    if (state.mode !== 'transcribe') return;
 
     const botId = state.botId || 'fumblebot';
     const botName = 'FumbleBot';
@@ -1761,8 +2062,6 @@ ${transcriptText.slice(0, 2000)}`,
       timestamp: Date.now(),
       isCommand: false,
     });
-
-    console.log(`[VoiceAssistant] Added bot response to transcript: "${text}"`);
 
     // Update live subtitles with bot response
     if (this.config.liveSubtitlesEnabled) {
@@ -1795,10 +2094,20 @@ ${transcriptText.slice(0, 2000)}`,
   /**
    * Get session info for a guild
    */
-  getSessionInfo(guildId: string): { mode: 'transcribe' | 'assistant'; startedBy: string } | null {
+  getSessionInfo(guildId: string): {
+    mode: 'transcribe' | 'assistant';
+    startedBy: string;
+    channelId: string;
+    channelName: string;
+  } | null {
     const state = this.activeGuilds.get(guildId);
     if (!state) return null;
-    return { mode: state.mode, startedBy: state.startedBy };
+    return {
+      mode: state.mode,
+      startedBy: state.startedBy,
+      channelId: state.channelId,
+      channelName: state.channel.name,
+    };
   }
 
   /**
@@ -1813,7 +2122,6 @@ ${transcriptText.slice(0, 2000)}`,
       state.startedBy = userId;
     }
 
-    console.log(`[VoiceAssistant] Upgraded to assistant mode in guild ${guildId}`);
     this.emit('modeChanged', { guildId, mode: 'assistant' });
     return true;
   }
@@ -1827,12 +2135,16 @@ ${transcriptText.slice(0, 2000)}`,
   }
 
   /**
-   * DM session transcript to a user
+   * DM session transcript to a user (only if in transcribe mode with entries)
    */
   async dmSessionTranscript(userId: string, guildId: string): Promise<void> {
     const state = this.activeGuilds.get(guildId);
     if (!state || !this.discordClient) {
-      console.warn('[VoiceAssistant] Cannot DM transcript: no state or client');
+      return;
+    }
+
+    // Only DM transcripts if in transcribe mode and there are entries
+    if (state.mode !== 'transcribe' || state.transcript.entries.length === 0) {
       return;
     }
 
@@ -1906,7 +2218,6 @@ ${transcriptText.slice(0, 2000)}`,
       }
 
       await user.send({ embeds: [embed], files: [attachment] });
-      console.log(`[VoiceAssistant] DM'd transcript to user ${userId}`);
     } catch (error) {
       console.error('[VoiceAssistant] Failed to DM transcript:', error);
       throw error;

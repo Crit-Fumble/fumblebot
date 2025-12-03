@@ -5,6 +5,7 @@
 
 import type { StringSelectMenuInteraction } from 'discord.js'
 import type { FumbleBotClient } from '../client.js'
+import { saveUserSettings } from '../settings/index.js'
 
 /**
  * Handle select menu interactions
@@ -22,6 +23,10 @@ export async function handleSelectMenu(
     const action = parts[0]
 
     switch (action) {
+      case 'settings':
+        await handleSettingsSelect(interaction, parts.slice(1), selectedValues)
+        break
+
       case 'campaign':
         await handleCampaignSelect(interaction, selectedValues)
         break
@@ -83,4 +88,84 @@ async function handleSystemSelect(
     content: `🎮 Selected system: ${system}`,
     ephemeral: true,
   })
+}
+
+/**
+ * Handle settings select menu interactions
+ */
+async function handleSettingsSelect(
+  interaction: StringSelectMenuInteraction,
+  parts: string[],
+  values: string[]
+): Promise<void> {
+  const settingType = parts[0]
+  const selectedValue = values[0]
+  const userId = interaction.user.id
+
+  await interaction.deferUpdate()
+
+  try {
+    switch (settingType) {
+      case 'voice': {
+        // Save voice preference
+        await saveUserSettings(userId, {
+          defaultVoice: selectedValue,
+        })
+        await interaction.editReply({
+          content: `✅ Voice changed to **${selectedValue}**`,
+          embeds: [],
+          components: [],
+        })
+        break
+      }
+
+      case 'system': {
+        // Save game system preference
+        await saveUserSettings(userId, {
+          defaultGameSystem: selectedValue,
+        })
+        const systemNames: Record<string, string> = {
+          '5e': '5e (2024)',
+          '5e-2014': '5e (2014)',
+          'pf2e': 'Pathfinder 2e',
+          'cypher': 'Cypher System',
+          'custom': 'Custom/Other',
+        }
+        await interaction.editReply({
+          content: `✅ Game system changed to **${systemNames[selectedValue] || selectedValue}**`,
+          embeds: [],
+          components: [],
+        })
+        break
+      }
+
+      case 'worldanvil': {
+        // Handle World Anvil world selection
+        if (parts[1] === 'world') {
+          await saveUserSettings(userId, {
+            worldAnvil: {
+              connected: true,
+              defaultWorldId: selectedValue,
+            },
+          })
+          await interaction.editReply({
+            content: `✅ Default World Anvil world updated`,
+            embeds: [],
+            components: [],
+          })
+        }
+        break
+      }
+
+      default:
+        await interaction.editReply({
+          content: '❌ Unknown settings option',
+        })
+    }
+  } catch (error) {
+    console.error('[Settings] Select menu error:', error)
+    await interaction.editReply({
+      content: '❌ Failed to save setting. Please try again.',
+    })
+  }
 }
