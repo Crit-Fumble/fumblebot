@@ -818,6 +818,11 @@ ${transcriptText.slice(0, 3000)}`,
         response = `❌ Couldn't post: ${postResult.error}`;
         spokenResponse = `Sorry, I couldn't post to that channel. ${postResult.error}`;
       }
+    } else if (intent.intent === 'lookup_rule' && intent.request) {
+      // Use web search for rule lookups (spells, monsters, items, etc.)
+      const lookupResult = await this.lookupRuleWithWebSearch(intent.request);
+      response = lookupResult.content;
+      spokenResponse = lookupResult.spoken;
     } else if (intent.suggestedResponse) {
       response = intent.suggestedResponse;
     } else if (intent.request) {
@@ -874,6 +879,88 @@ ${mcpContext}`,
     } catch (error) {
       console.error('[VoiceAssistant] Failed to generate response:', error);
       return `I heard your request: "${request}" but couldn't process it.`;
+    }
+  }
+
+  /**
+   * Lookup a D&D rule/spell/monster/item using web search
+   * Returns both formatted text and a spoken summary
+   */
+  private async lookupRuleWithWebSearch(request: string): Promise<{ content: string; spoken: string }> {
+    const requestLower = request.toLowerCase();
+    console.log(`[VoiceAssistant] Looking up rule with web search: "${request}"`);
+
+    // Determine the category based on keywords
+    let category = 'spells'; // default
+    let searchQuery = request;
+
+    // Detect category from request
+    if (requestLower.includes('monster') || requestLower.includes('creature') || requestLower.includes('bestiary')) {
+      category = 'bestiary';
+      searchQuery = request.replace(/monster|creature|bestiary|what is a|tell me about/gi, '').trim();
+    } else if (requestLower.includes('item') || requestLower.includes('weapon') || requestLower.includes('armor') || requestLower.includes('equipment')) {
+      category = 'items';
+      searchQuery = request.replace(/item|weapon|armor|equipment|what is|tell me about/gi, '').trim();
+    } else if (requestLower.includes('class') || requestLower.includes('subclass')) {
+      category = 'classes';
+      searchQuery = request.replace(/class|subclass|what is|tell me about/gi, '').trim();
+    } else if (requestLower.includes('race') || requestLower.includes('species')) {
+      category = 'races';
+      searchQuery = request.replace(/race|species|what is|tell me about/gi, '').trim();
+    } else if (requestLower.includes('feat')) {
+      category = 'feats';
+      searchQuery = request.replace(/feat|what is|tell me about/gi, '').trim();
+    } else if (requestLower.includes('background')) {
+      category = 'backgrounds';
+      searchQuery = request.replace(/background|what is|tell me about/gi, '').trim();
+    } else if (requestLower.includes('condition') || requestLower.includes('disease')) {
+      category = 'conditions';
+      searchQuery = request.replace(/condition|disease|what is|tell me about/gi, '').trim();
+    } else if (requestLower.includes('spell') || requestLower.includes('cast')) {
+      category = 'spells';
+      searchQuery = request.replace(/spell|cast|what is|tell me about|how does.*work/gi, '').trim();
+    } else {
+      // Try to extract the main subject
+      searchQuery = request.replace(/what is|tell me about|how does|look up|search for|find/gi, '').trim();
+    }
+
+    // Clean up the search query
+    searchQuery = searchQuery.replace(/\?/g, '').trim();
+    if (!searchQuery) searchQuery = request;
+
+    console.log(`[VoiceAssistant] Searching 5e.tools for "${searchQuery}" in category "${category}"`);
+
+    try {
+      const result = await this.aiService.search5eTools(searchQuery, category);
+
+      if (result.success && result.content) {
+        // Generate a spoken summary (shorter for TTS)
+        const spokenResult = await this.aiService.lookup(
+          `Summarize this D&D rule/spell/monster in 1-2 sentences for voice response. Be concise but include the key mechanic:\n\n${result.content}`,
+          'You are FumbleBot giving a brief voice answer. Keep it under 30 words.',
+          { maxTokens: 100 }
+        );
+
+        return {
+          content: result.content,
+          spoken: spokenResult.content,
+        };
+      } else {
+        // Fallback to general AI response
+        console.log(`[VoiceAssistant] Web search didn't find results, falling back to AI`);
+        const fallbackResponse = await this.generateResponse(request);
+        return {
+          content: fallbackResponse,
+          spoken: fallbackResponse.replace(/[*_`#\[\]]/g, ''),
+        };
+      }
+    } catch (error) {
+      console.error('[VoiceAssistant] Web search failed:', error);
+      const fallbackResponse = await this.generateResponse(request);
+      return {
+        content: fallbackResponse,
+        spoken: fallbackResponse.replace(/[*_`#\[\]]/g, ''),
+      };
     }
   }
 
