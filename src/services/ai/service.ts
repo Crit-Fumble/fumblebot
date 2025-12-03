@@ -19,6 +19,10 @@ import type {
   OpenAIConfig,
   AnthropicConfig,
 } from '../../models/types.js'
+import {
+  webFetchService,
+  type WebFetchResult,
+} from '../web/index.js'
 
 // Anthropic model constants
 const CLAUDE_SONNET = 'claude-sonnet-4-20250514'
@@ -395,6 +399,127 @@ Respond with just the action and a one-sentence reasoning.`,
     })
 
     return response.data?.[0]?.url || ''
+  }
+
+  // ===========================================
+  // WEB FETCH - External TTRPG content
+  // ===========================================
+
+  /**
+   * Fetch content from an external URL and summarize it
+   * Only allows whitelisted TTRPG sites (5e.tools, D&D Beyond, FoundryVTT KB, Cypher)
+   */
+  async fetchAndSummarize(
+    url: string,
+    query?: string,
+    options?: { maxTokens?: number }
+  ): Promise<{ success: boolean; content: string; source?: string; error?: string }> {
+    // Fetch the content
+    const fetchResult = await webFetchService.fetch(url, { query });
+
+    if (!fetchResult.success) {
+      return {
+        success: false,
+        content: '',
+        error: fetchResult.error,
+      };
+    }
+
+    // If content is short enough, return directly
+    if (fetchResult.content && fetchResult.content.length < 2000) {
+      return {
+        success: true,
+        content: fetchResult.content,
+        source: fetchResult.source,
+      };
+    }
+
+    // Use AI to summarize longer content
+    try {
+      const summarizePrompt = query
+        ? `Summarize the following content, focusing on information about "${query}":\n\n${fetchResult.content}`
+        : `Summarize the following TTRPG content concisely:\n\n${fetchResult.content}`;
+
+      const result = await this.lookup(
+        summarizePrompt,
+        'You are a TTRPG assistant. Provide concise, accurate summaries of game content. Include key stats, mechanics, and descriptions. Always cite the source.',
+        { maxTokens: options?.maxTokens ?? 800 }
+      );
+
+      return {
+        success: true,
+        content: result.content + `\n\nSource: ${fetchResult.source}`,
+        source: fetchResult.source,
+      };
+    } catch (error) {
+      // If AI summarization fails, return raw content (truncated)
+      const truncated = fetchResult.content?.substring(0, 2000) + '...\n\n[Content truncated]';
+      return {
+        success: true,
+        content: truncated + `\n\nSource: ${fetchResult.source}`,
+        source: fetchResult.source,
+      };
+    }
+  }
+
+  /**
+   * Search 5e.tools for D&D 5e content
+   */
+  async search5eTools(
+    query: string,
+    category: string = 'spells'
+  ): Promise<{ success: boolean; content: string; source?: string; error?: string }> {
+    const fetchResult = await webFetchService.search5eTools(query, category);
+
+    if (!fetchResult.success) {
+      return {
+        success: false,
+        content: '',
+        error: fetchResult.error,
+      };
+    }
+
+    // Use AI to extract and format the relevant information
+    try {
+      const extractPrompt = `Extract information about "${query}" from this 5e.tools content. Format it clearly with stats, descriptions, and mechanics:\n\n${fetchResult.content}`;
+
+      const result = await this.lookup(
+        extractPrompt,
+        `You are a D&D 5e expert. Extract and format ${category} information accurately. Include:
+- Name and basic info (level, school, type)
+- Key stats and mechanics
+- Description
+- Any relevant notes
+Keep it concise but complete. If the content doesn't contain the requested information, say so.`,
+        { maxTokens: 800 }
+      );
+
+      return {
+        success: true,
+        content: result.content + `\n\nSource: ${fetchResult.source}`,
+        source: fetchResult.source,
+      };
+    } catch (error) {
+      return {
+        success: true,
+        content: fetchResult.content || '',
+        source: fetchResult.source,
+      };
+    }
+  }
+
+  /**
+   * Check if a URL is allowed for fetching
+   */
+  isUrlAllowed(url: string): boolean {
+    return webFetchService.isAllowed(url);
+  }
+
+  /**
+   * Get the list of allowed domains for user feedback
+   */
+  getAllowedDomains(): string {
+    return webFetchService.getAllowedDomainsMessage();
   }
 
   // ===========================================
