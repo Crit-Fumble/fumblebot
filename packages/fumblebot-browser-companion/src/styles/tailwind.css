@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Extension-specific styles */
+body {
+  min-width: 320px;
+  margin: 0;
+  padding: 0;
+}
+
+/* Ensure popup has proper dimensions */
+#root {
+  min-height: 200px;
+}
+
+/* VTT platform colors */
+.vtt-roll20 {
+  --vtt-color: #d91f26;
+}
+
+.vtt-dndbeyond {
+  --vtt-color: #c53131;
+}
+
+.vtt-foundry {
+  --vtt-color: #f97316;
+}
+
+/* Connection status indicators */
+.status-connected {
+  @apply bg-green-500;
+}
+
+.status-connecting {
+  @apply bg-yellow-500 animate-pulse;
+}
+
+.status-disconnected {
+  @apply bg-gray-500;
+}
+
+.status-error {
+  @apply bg-red-500;
+}

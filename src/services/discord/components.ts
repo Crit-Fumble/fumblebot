@@ -709,3 +709,109 @@ export function buildPaginationButtons(currentPage: number, totalPages: number, 
       .setDisabled(currentPage >= totalPages)
   );
 }
+
+// ===========================================
+// Web Search Embeds
+// ===========================================
+
+export interface WebSearchResult {
+  query: string;
+  content: string;
+  sourceUrl: string;
+  sourceName: string;
+  matchType?: string;
+  screenshotBuffer?: Buffer;
+}
+
+/**
+ * Build a Discord embed for web search results (Cypher SRD, 5e.tools, etc.)
+ */
+export function buildWebSearchEmbed(result: WebSearchResult) {
+  // Determine icon and color based on source
+  const sourceConfig: Record<string, { emoji: string; color: ColorResolvable }> = {
+    'cypher': { emoji: '🎲', color: 0x00b4d8 }, // Cypher blue
+    'cypher-srd': { emoji: '🎲', color: 0x00b4d8 },
+    '5e.tools': { emoji: '🐉', color: 0xc41e3a }, // D&D red
+    '5etools': { emoji: '🐉', color: 0xc41e3a },
+    'dndbeyond': { emoji: '📖', color: 0xc9252d },
+    'foundryvtt': { emoji: '🎭', color: 0xff6400 },
+    'default': { emoji: '🔍', color: Colors.PRIMARY },
+  };
+
+  // Find matching config
+  let config = sourceConfig['default'];
+  for (const [key, value] of Object.entries(sourceConfig)) {
+    if (result.sourceName.toLowerCase().includes(key)) {
+      config = value;
+      break;
+    }
+  }
+
+  // Determine title based on match type
+  const typeLabels: Record<string, string> = {
+    ability: 'Ability',
+    focus: 'Focus',
+    descriptor: 'Descriptor',
+    type: 'Type',
+    flavor: 'Flavor',
+    cypher: 'Cypher',
+    artifact: 'Artifact',
+    spell: 'Spell',
+    item: 'Item',
+    monster: 'Monster',
+    text: 'Search Result',
+  };
+
+  const typeLabel = typeLabels[result.matchType || 'text'] || 'Search Result';
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${config.emoji} ${typeLabel}: ${result.query}`)
+    .setColor(config.color)
+    .setTimestamp();
+
+  // Truncate content for embed (Discord limit is 4096 for description)
+  const maxContentLength = 3800;
+  let description = result.content;
+  if (description.length > maxContentLength) {
+    description = description.slice(0, maxContentLength) + '\n\n*...content truncated*';
+  }
+
+  embed.setDescription(description);
+
+  // Add source link as footer
+  embed.setFooter({
+    text: `Source: ${result.sourceName}`,
+  });
+
+  // Add URL button
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setLabel('View Source')
+      .setStyle(ButtonStyle.Link)
+      .setURL(result.sourceUrl)
+      .setEmoji('🔗'),
+    new ButtonBuilder()
+      .setCustomId(`websearch:refresh:${encodeURIComponent(result.query)}`)
+      .setLabel('Search Again')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('🔄')
+  );
+
+  return { embeds: [embed], components: [row] };
+}
+
+/**
+ * Build a web search embed with an attached screenshot image
+ */
+export function buildWebSearchEmbedWithImage(
+  result: WebSearchResult,
+  attachmentName: string = 'screenshot.png'
+) {
+  const embedResult = buildWebSearchEmbed(result);
+  const embed = embedResult.embeds[0];
+
+  // Set the image to the attachment
+  embed.setImage(`attachment://${attachmentName}`);
+
+  return embedResult;
+}

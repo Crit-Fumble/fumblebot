@@ -19,3 +19,10 @@ export {
   type SiteType,
   type ExtractedContent,
 } from './extractors.js';
+
+export {
+  WebScreenshotService,
+  getWebScreenshotService,
+  type WebScreenshotOptions,
+  type WebScreenshotResult,
+} from './screenshot.js';

@@ -1,0 +1,79 @@
+{
+  "manifest_version": 3,
+  "name": "FumbleBot Companion",
+  "version": "0.1.0",
+  "description": "Connect TTRPG virtual tabletops to Discord via FumbleBot",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png"
+    },
+    "default_title": "FumbleBot Companion"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://app.roll20.net/*"],
+      "js": ["content/roll20.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.dndbeyond.com/*"],
+      "js": ["content/dndbeyond.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost:30000/*", "https://*.foundryvtt.com/*"],
+      "js": ["content/foundry.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://tools.cypher-system.com/*", "https://og-csrd.callmepartario.com/*"],
+      "js": ["content/cypher-tools.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://5e.tools/*", "https://*.5e.tools/*", "https://5etools-mirror-3.github.io/*"],
+      "js": ["content/5etools.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://fumblebot.crit-fumble.com/*",
+    "https://app.roll20.net/*",
+    "https://www.dndbeyond.com/*",
+    "http://localhost:30000/*",
+    "https://*.foundryvtt.com/*",
+    "https://tools.cypher-system.com/*",
+    "https://og-csrd.callmepartario.com/*",
+    "https://5e.tools/*",
+    "https://*.5e.tools/*",
+    "https://5etools-mirror-3.github.io/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*", "styles.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
