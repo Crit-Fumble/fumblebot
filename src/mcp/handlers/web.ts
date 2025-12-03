@@ -22,6 +22,9 @@ export class WebHandler {
       case 'web_search_forgotten_realms':
         return await this.webSearchForgottenRealms(args);
 
+      case 'web_search_dndbeyond_support':
+        return await this.webSearchDndBeyondSupport(args);
+
       default:
         throw new Error(`Unknown web tool: ${name}`);
     }
@@ -450,5 +453,168 @@ ${html.slice(0, 20000)}`;
         isError: true,
       };
     }
+  }
+
+  private async webSearchDndBeyondSupport(args: any): Promise<MCPToolResult> {
+    const { query } = args;
+
+    try {
+      // D&D Beyond Support uses Zendesk which has a search API
+      const baseUrl = 'https://dndbeyond-support.wizards.com';
+      const searchUrl = `${baseUrl}/api/v2/help_center/articles/search.json?query=${encodeURIComponent(query)}&per_page=5`;
+
+      console.error(`[web_search_dndbeyond_support] Searching for "${query}"`);
+
+      // Search for articles
+      const searchResponse = await fetch(searchUrl, {
+        headers: {
+          'User-Agent': 'FumbleBot/1.0 (TTRPG Assistant Bot)',
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!searchResponse.ok) {
+        // Fall back to HTML scraping if API doesn't work
+        return await this.webSearchDndBeyondSupportFallback(query);
+      }
+
+      const searchData = await searchResponse.json() as {
+        results: Array<{
+          id: number;
+          title: string;
+          body: string;
+          html_url: string;
+          section_id: number;
+        }>;
+        count: number;
+      };
+
+      if (searchData.count === 0 || searchData.results.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `No support articles found for "${query}" on D&D Beyond Support. Try different keywords or visit https://dndbeyond-support.wizards.com directly.`,
+            },
+          ],
+        };
+      }
+
+      // Format the results
+      const articles = searchData.results.slice(0, 3);
+      const aiService = AIService.getInstance();
+
+      // Get the first article's full content
+      const firstArticle = articles[0];
+      const articleResponse = await fetch(firstArticle.html_url, {
+        headers: {
+          'User-Agent': 'FumbleBot/1.0 (TTRPG Assistant Bot)',
+        },
+      });
+
+      let articleContent = '';
+      if (articleResponse.ok) {
+        const html = await articleResponse.text();
+        articleContent = html.slice(0, 15000);
+      }
+
+      const extractionPrompt = `You are extracting help/support information from D&D Beyond Support.
+
+Search Query: "${query}"
+Article Title: ${firstArticle.title}
+Article URL: ${firstArticle.html_url}
+
+Other matching articles:
+${articles.slice(1).map(a => `- ${a.title}: ${a.html_url}`).join('\n')}
+
+Instructions:
+- Extract the key information from this support article
+- Format as clear, actionable steps if it's a how-to
+- Include any troubleshooting steps or solutions
+- Keep it concise and helpful
+- End with: "Source: [D&D Beyond Support](${firstArticle.html_url})"
+
+Article Content:
+${articleContent || firstArticle.body}`;
+
+      const result = await aiService.lookup(
+        extractionPrompt,
+        'You are a helpful support agent extracting D&D Beyond help articles. Be clear and actionable.',
+        { maxTokens: 1000 }
+      );
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: result.content,
+          },
+        ],
+        _meta: {
+          query,
+          articleTitle: firstArticle.title,
+          articleUrl: firstArticle.html_url,
+          totalResults: searchData.count,
+          otherArticles: articles.slice(1).map(a => ({ title: a.title, url: a.html_url })),
+        },
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Failed to search D&D Beyond Support for "${query}": ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  private async webSearchDndBeyondSupportFallback(query: string): Promise<MCPToolResult> {
+    // Fallback: use the search page directly
+    const searchUrl = `https://dndbeyond-support.wizards.com/hc/en-us/search?query=${encodeURIComponent(query)}`;
+
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'FumbleBot/1.0 (TTRPG Assistant Bot)',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const html = await response.text();
+    const aiService = AIService.getInstance();
+
+    const extractionPrompt = `Extract search results from this D&D Beyond Support search page.
+
+Search Query: "${query}"
+Search URL: ${searchUrl}
+
+Instructions:
+- List the top 3-5 matching support articles found
+- For each article, include the title and a brief summary
+- If no results found, say so
+- End with a link to the search page
+
+HTML Content (first 15000 chars):
+${html.slice(0, 15000)}`;
+
+    const result = await aiService.lookup(
+      extractionPrompt,
+      'You are extracting D&D Beyond support search results. List the articles found.',
+      { maxTokens: 800 }
+    );
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: result.content + `\n\nSearch: [D&D Beyond Support](${searchUrl})`,
+        },
+      ],
+    };
   }
 }

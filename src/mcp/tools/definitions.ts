@@ -670,6 +670,21 @@ export const webTools: Tool[] = [
       required: ['query'],
     },
   },
+  {
+    name: 'web_search_dndbeyond_support',
+    description:
+      'Search D&D Beyond Support for help articles, troubleshooting, and FAQ. Use when players have issues with D&D Beyond accounts, character sheets, purchases, or technical problems.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query (e.g., "reset password", "character not loading", "share content", "subscription", "import character")',
+        },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 /** Get all tool definitions */

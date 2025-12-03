@@ -2,27 +2,91 @@
  * Web Fetch Service
  * Fetches content from whitelisted TTRPG websites for FumbleBot
  *
- * Only allows fetching from domains in the Knowledge Base whitelist:
- * - 5e.tools (D&D 5e reference)
- * - dndbeyond.com (D&D Beyond)
- * - foundryvtt.com/kb (FoundryVTT knowledge base)
- * - tools.cypher-system.com (Cypher System tools)
+ * Organized sitemap of allowed domains and their sub-sites
  */
 
 import { extractContent, type SiteType } from './extractors.js';
 
-/** Allowed domains for web fetching */
-export const ALLOWED_DOMAINS = [
-  '5e.tools',
-  'www.5e.tools',
-  'www.dndbeyond.com',
-  'dndbeyond.com',
-  'foundryvtt.com',
-  'www.foundryvtt.com',
-  'tools.cypher-system.com',
-  'callmepartario.github.io',
-  'forgottenrealms.fandom.com',
-] as const;
+/**
+ * Sitemap of allowed TTRPG sites organized by category
+ * Each entry includes the main domain and any related sub-sites
+ */
+export const SITE_MAP = {
+  // D&D 5e Tools - Comprehensive 5e reference
+  '5etools': {
+    name: '5e.tools',
+    description: 'D&D 5e spells, monsters, items, classes, races, feats, and more',
+    domains: ['5e.tools', 'www.5e.tools'],
+    paths: null, // All paths allowed
+  },
+
+  // D&D Beyond - Official D&D digital platform
+  'dndbeyond': {
+    name: 'D&D Beyond',
+    description: 'Official D&D content, character sheets, and compendium',
+    domains: ['dndbeyond.com', 'www.dndbeyond.com'],
+    paths: null,
+    subsites: {
+      support: {
+        name: 'D&D Beyond Support',
+        description: 'Help articles, troubleshooting, and FAQ',
+        domains: ['dndbeyond-support.wizards.com'],
+        paths: ['/hc/'],
+      },
+    },
+  },
+
+  // FoundryVTT - Virtual tabletop knowledge base
+  'foundryvtt': {
+    name: 'FoundryVTT',
+    description: 'FoundryVTT documentation, API reference, and user guides',
+    domains: ['foundryvtt.com', 'www.foundryvtt.com'],
+    paths: ['/kb/', '/kb'], // Only KB paths allowed
+  },
+
+  // Cypher System - Monte Cook Games
+  'cypher': {
+    name: 'Cypher System',
+    description: 'Cypher System rules, abilities, types, and foci',
+    domains: ['tools.cypher-system.com'],
+    paths: null,
+    subsites: {
+      srd: {
+        name: "Old Gus' Cypher SRD",
+        description: 'Comprehensive Cypher System reference',
+        domains: ['callmepartario.github.io'],
+        paths: ['/og-csrd/'],
+      },
+    },
+  },
+
+  // Forgotten Realms Wiki - D&D lore
+  'forgotten-realms': {
+    name: 'Forgotten Realms Wiki',
+    description: 'D&D Forgotten Realms setting lore, characters, locations, and history',
+    domains: ['forgottenrealms.fandom.com'],
+    paths: null,
+  },
+} as const;
+
+/** Flatten all allowed domains from the sitemap */
+function getAllowedDomainsFromSitemap(): string[] {
+  const domains: string[] = [];
+
+  for (const site of Object.values(SITE_MAP)) {
+    domains.push(...site.domains);
+    if ('subsites' in site && site.subsites) {
+      for (const subsite of Object.values(site.subsites)) {
+        domains.push(...subsite.domains);
+      }
+    }
+  }
+
+  return domains;
+}
+
+/** Legacy export for backwards compatibility */
+export const ALLOWED_DOMAINS = getAllowedDomainsFromSitemap();
 
 /** Result of a web fetch operation */
 export interface WebFetchResult {
@@ -74,23 +138,36 @@ export class WebFetchService {
 
   /**
    * Check if a URL is allowed to be fetched
+   * Uses the SITE_MAP to validate both domain and path restrictions
    */
   isAllowed(url: string): boolean {
     try {
       const parsed = new URL(url);
       const hostname = parsed.hostname.toLowerCase();
+      const pathname = parsed.pathname;
 
-      // Check against whitelist
-      const allowed = ALLOWED_DOMAINS.some(domain =>
-        hostname === domain || hostname.endsWith('.' + domain)
-      );
+      // Check each site in the sitemap
+      for (const site of Object.values(SITE_MAP)) {
+        // Check main site domains
+        if (site.domains.some(d => hostname === d || hostname.endsWith('.' + d))) {
+          // If paths is null, all paths allowed
+          if (site.paths === null) return true;
+          // Check if pathname matches any allowed path
+          if (site.paths.some(p => pathname.startsWith(p))) return true;
+        }
 
-      // Additional check: foundryvtt.com must be /kb/ paths
-      if (allowed && hostname.includes('foundryvtt.com')) {
-        return parsed.pathname.startsWith('/kb/') || parsed.pathname.startsWith('/kb');
+        // Check subsites
+        if ('subsites' in site && site.subsites) {
+          for (const subsite of Object.values(site.subsites)) {
+            if (subsite.domains.some(d => hostname === d || hostname.endsWith('.' + d))) {
+              if (subsite.paths === null) return true;
+              if (subsite.paths.some(p => pathname.startsWith(p))) return true;
+            }
+          }
+        }
       }
 
-      return allowed;
+      return false;
     } catch {
       return false;
     }
@@ -100,14 +177,30 @@ export class WebFetchService {
    * Get the list of allowed domains for error messages
    */
   getAllowedDomainsMessage(): string {
-    return [
-      '5e.tools',
-      'dndbeyond.com',
-      'foundryvtt.com/kb/',
-      'tools.cypher-system.com',
-      'callmepartario.github.io',
-      'forgottenrealms.fandom.com',
-    ].join(', ');
+    const sites: string[] = [];
+
+    for (const site of Object.values(SITE_MAP)) {
+      const mainDomain = site.domains[0];
+      const pathSuffix = site.paths ? site.paths[0] : '';
+      sites.push(mainDomain + pathSuffix);
+
+      if ('subsites' in site && site.subsites) {
+        for (const subsite of Object.values(site.subsites)) {
+          const subDomain = subsite.domains[0];
+          const subPath = subsite.paths ? subsite.paths[0] : '';
+          sites.push(subDomain + subPath);
+        }
+      }
+    }
+
+    return sites.join(', ');
+  }
+
+  /**
+   * Get the full sitemap for documentation/help
+   */
+  getSiteMap(): typeof SITE_MAP {
+    return SITE_MAP;
   }
 
   /**
