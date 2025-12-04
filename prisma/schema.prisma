@@ -317,3 +317,120 @@ model UserSettings {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ===========================================
+// FumbleBot Character System
+// Tracks FumbleBot's personas, skills, and capabilities
+// ===========================================
+
+// FumbleBot persona/character - different configurations
+model BotPersona {
+  id          String   @id @default(cuid())
+  name        String   // "FumbleBot", "Dungeon Master", "Tavern Keeper Bob"
+  slug        String   @unique // "fumblebot", "dm", "tavern-keeper-bob"
+  description String?
+
+  // Voice & presentation
+  voice       String   @default("orion") // TTS voice
+  avatarUrl   String?
+  personality String?  @db.Text // Personality prompt/description
+
+  // Model configuration (stats)
+  primaryModel   String @default("claude-sonnet") // Main reasoning model
+  lookupModel    String @default("claude-haiku")  // Quick lookup model
+  maxTokens      Int    @default(2000)
+  temperature    Float  @default(0.7)
+
+  // Ownership
+  isGlobal    Boolean  @default(false) // Available to all guilds
+  guildId     String?  // If guild-specific
+  createdBy   String?  // Discord ID of creator
+
+  // Skills this persona has
+  skills      BotSkill[]
+
+  // Channel webhooks for this persona
+  webhooks    PersonaWebhook[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([guildId])
+  @@index([isGlobal])
+}
+
+// Discord webhooks for persona to speak as characters
+model PersonaWebhook {
+  id          String   @id @default(cuid())
+  personaId   String
+  guildId     String
+  channelId   String
+
+  // Discord webhook details
+  webhookId   String
+  webhookToken String
+
+  // Cached for display
+  channelName String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  persona     BotPersona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@unique([personaId, channelId])
+  @@index([guildId])
+}
+
+// Skills/capabilities FumbleBot can learn
+model BotSkill {
+  id          String   @id @default(cuid())
+  name        String   // "Fandom Wiki Search", "World Anvil Integration"
+  slug        String   @unique // "fandom-wiki", "world-anvil"
+  description String?
+  category    String   @default("general") // "knowledge", "tools", "roleplay"
+
+  // Skill mechanics
+  toolName    String?  // MCP tool name: "web_search_fandom_wiki"
+  isBuiltIn   Boolean  @default(false) // Core capability vs learned
+
+  // Proficiency tracking
+  usageCount  Int      @default(0)
+  lastUsedAt  DateTime?
+
+  // Which personas have this skill
+  personas    BotPersona[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Memory/learning log - what FumbleBot has learned
+model BotMemory {
+  id          String   @id @default(cuid())
+
+  // Context
+  guildId     String?
+  channelId   String?
+  userId      String?  // Who taught it
+
+  // Memory content
+  type        String   // "skill", "fact", "preference", "correction"
+  category    String   @default("general")
+  key         String   // Lookup key
+  content     String   @db.Text // What was learned
+  confidence  Float    @default(1.0) // How confident (can decay)
+
+  // Usage tracking
+  usageCount  Int      @default(0)
+  lastUsedAt  DateTime?
+
+  // Lifecycle
+  expiresAt   DateTime? // Optional expiration
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([guildId, type, key])
+  @@index([guildId, category])
+  @@index([type, key])
+}

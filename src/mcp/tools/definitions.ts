@@ -456,17 +456,17 @@ export const fumbleTools: Tool[] = [
   {
     name: 'fumble_roll_dice',
     description:
-      'Roll dice using standard notation (e.g., "2d6+3", "1d20", "4d6 drop lowest"). Returns individual rolls and total.',
+      'Roll dice using standard notation. Supports: basic (2d6+3), advantage (2d20kh), disadvantage (2d20kl), drop lowest (4d6dl), exploding (1d6!), and more. Detects crits and fumbles on d20s.',
     inputSchema: {
       type: 'object',
       properties: {
         notation: {
           type: 'string',
-          description: 'Dice notation (e.g., "2d6+3", "1d20")',
+          description: 'Dice notation. Examples: 2d6+3, 2d20kh (advantage), 2d20kl (disadvantage), 4d6dl (drop lowest), 1d6! (exploding)',
         },
         label: {
           type: 'string',
-          description: 'Optional label for the roll',
+          description: 'Optional label for the roll (e.g., "Attack Roll", "Fireball damage")',
         },
       },
       required: ['notation'],
@@ -835,6 +835,27 @@ export const webTools: Tool[] = [
     },
   },
   {
+    name: 'web_search_fandom_wiki',
+    description:
+      'Search TTRPG Fandom wikis for campaign setting lore, characters, locations, deities, items, and world-building content. Supports: Forgotten Realms, Eberron, Critical Role/Exandria, Pathfinder/Golarion, Dragonlance, Greyhawk, Spelljammer, Planescape, Ravenloft.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query (e.g., "Katokoro Glacier", "Sharn", "Vox Machina", "Absalom")',
+        },
+        wiki: {
+          type: 'string',
+          description: 'Which wiki to search',
+          enum: ['forgotten-realms', 'eberron', 'critical-role', 'pathfinder', 'dragonlance', 'greyhawk', 'spelljammer', 'planescape', 'ravenloft'],
+          default: 'forgotten-realms',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'web_search_dndbeyond_support',
     description:
       'Search D&D Beyond Support for help articles, troubleshooting, and FAQ. Use when players have issues with D&D Beyond accounts, character sheets, purchases, or technical problems.',
@@ -943,6 +964,190 @@ export const worldAnvilTools: Tool[] = [
   },
 ];
 
+/** Persona & Memory tool definitions */
+export const personaTools: Tool[] = [
+  {
+    name: 'memory_remember',
+    description:
+      'Remember a fact, preference, or piece of information for future reference. Use this to learn from conversations and retain useful context.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        guildId: {
+          type: 'string',
+          description: 'Discord guild ID (optional, for guild-specific memories)',
+        },
+        type: {
+          type: 'string',
+          description: 'Type of memory',
+          enum: ['fact', 'preference', 'correction', 'skill'],
+          default: 'fact',
+        },
+        category: {
+          type: 'string',
+          description: 'Category for organizing memories (e.g., "campaign", "player", "rules")',
+          default: 'general',
+        },
+        key: {
+          type: 'string',
+          description: 'Unique key/topic for this memory (e.g., "player_bob_character", "house_rule_crits")',
+        },
+        content: {
+          type: 'string',
+          description: 'The information to remember',
+        },
+        confidence: {
+          type: 'number',
+          description: 'Confidence level 0-1 (default 1.0)',
+          default: 1.0,
+        },
+      },
+      required: ['key', 'content'],
+    },
+  },
+  {
+    name: 'memory_recall',
+    description:
+      'Recall memories related to a topic, category, or type. Use this to retrieve previously learned information.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        guildId: {
+          type: 'string',
+          description: 'Discord guild ID to filter memories',
+        },
+        type: {
+          type: 'string',
+          description: 'Filter by memory type',
+          enum: ['fact', 'preference', 'correction', 'skill'],
+        },
+        category: {
+          type: 'string',
+          description: 'Filter by category',
+        },
+        key: {
+          type: 'string',
+          description: 'Search for memories containing this key/topic',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of memories to return',
+          default: 10,
+        },
+      },
+    },
+  },
+  {
+    name: 'memory_forget',
+    description:
+      'Forget/delete a specific memory. Use when information is outdated or incorrect.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        guildId: {
+          type: 'string',
+          description: 'Discord guild ID',
+        },
+        type: {
+          type: 'string',
+          description: 'Memory type',
+        },
+        key: {
+          type: 'string',
+          description: 'Memory key to forget',
+        },
+      },
+      required: ['guildId', 'type', 'key'],
+    },
+  },
+  {
+    name: 'skill_learn',
+    description:
+      'Learn a new skill or capability. Use when discovering you can do something new.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: {
+          type: 'string',
+          description: 'Unique identifier for the skill (lowercase, hyphenated)',
+        },
+        name: {
+          type: 'string',
+          description: 'Human-readable skill name',
+        },
+        description: {
+          type: 'string',
+          description: 'What this skill does',
+        },
+        category: {
+          type: 'string',
+          description: 'Skill category',
+          enum: ['knowledge', 'tools', 'roleplay', 'general'],
+          default: 'general',
+        },
+        toolName: {
+          type: 'string',
+          description: 'Associated MCP tool name (if any)',
+        },
+        personaSlug: {
+          type: 'string',
+          description: 'Persona to attach this skill to',
+          default: 'fumblebot',
+        },
+      },
+      required: ['slug', 'name'],
+    },
+  },
+  {
+    name: 'persona_list',
+    description:
+      'List available personas/characters that can be used.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        guildId: {
+          type: 'string',
+          description: 'Discord guild ID to include guild-specific personas',
+        },
+      },
+    },
+  },
+  {
+    name: 'persona_get',
+    description:
+      'Get details about a specific persona including skills and configuration.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: {
+          type: 'string',
+          description: 'Persona slug (e.g., "fumblebot", "dm", "tavern-keeper")',
+        },
+      },
+      required: ['slug'],
+    },
+  },
+  {
+    name: 'persona_context',
+    description:
+      'Get the full context for a persona including personality, skills, and relevant memories.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        personaSlug: {
+          type: 'string',
+          description: 'Persona slug',
+          default: 'fumblebot',
+        },
+        guildId: {
+          type: 'string',
+          description: 'Guild ID for guild-specific memories',
+        },
+      },
+    },
+  },
+];
+
 /** Get all tool definitions */
 export function getAllTools(): Tool[] {
   return [
@@ -955,5 +1160,6 @@ export function getAllTools(): Tool[] {
     ...kbTools,
     ...webTools,
     ...worldAnvilTools,
+    ...personaTools,
   ];
 }

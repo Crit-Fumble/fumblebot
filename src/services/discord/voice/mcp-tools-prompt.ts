@@ -38,6 +38,12 @@ I'm hooked up to a bunch of tools. Here's the rundown:
 - Change voice (orion, luna, zeus, athena, perseus, angus, stella)
 - Assume NPC roles with custom voice/personality
 
+## Memory & Learning
+- I remember facts and preferences you tell me
+- I track skills I've learned and used
+- I can switch between different personas/characters
+- Each persona can have different voices and AI models
+
 ## How I Work
 - I'll just look stuff up when you ask - no need to tell me to
 - If I know it, I'll answer. If not, I'll search
@@ -55,7 +61,7 @@ I'm hooked up to a bunch of tools. Here's the rundown:
  * Get abbreviated MCP tools prompt for token-limited contexts
  */
 export const MCP_TOOLS_SHORT_PROMPT = `
-You have access to: KB search (362 TTRPG articles), web_search_5etools (5e rules/spells/monsters), web_search_cypher_srd (Cypher System), web_search_fandom_wiki (Forgotten Realms, Eberron, Critical Role, etc.), World Anvil (campaign worlds & custom lore), Foundry VTT tools, NPC/lore generation, dice rolling, and voice control. Use web search tools to look up rules and content. Use World Anvil for custom campaign content. Be concise for voice.
+You have access to: KB search (362 TTRPG articles), web_search_5etools (5e rules/spells/monsters), web_search_cypher_srd (Cypher System), web_search_fandom_wiki (Forgotten Realms, Eberron, Critical Role, etc.), World Anvil (campaign worlds & custom lore), Foundry VTT tools, NPC/lore generation, dice rolling, voice control, and memory/persona tools. You remember facts and preferences, track skills you've learned, and can switch between personas. Be concise for voice.
 `;
 
 /**
@@ -107,6 +113,18 @@ export function getMCPPromptForContext(question: string): string {
   if (lowerQ.includes('world anvil') || lowerQ.includes('worldanvil') || lowerQ.includes('my world') ||
       lowerQ.includes('my campaign') || lowerQ.includes('our world') || lowerQ.includes('campaign lore')) {
     return 'You can search World Anvil for custom campaign content - worlds, articles, NPCs, locations, items. Be concise.';
+  }
+
+  // Memory/learning requests
+  if (lowerQ.includes('remember') || lowerQ.includes('recall') || lowerQ.includes('forget') ||
+      lowerQ.includes('learn') || lowerQ.includes('skill') || lowerQ.includes('memory')) {
+    return 'You can remember facts and preferences, recall stored memories, forget information, and track skills you\'ve learned. Be concise.';
+  }
+
+  // Persona/character requests
+  if (lowerQ.includes('persona') || lowerQ.includes('character') || lowerQ.includes('switch') ||
+      lowerQ.includes('become') || lowerQ.includes('as a')) {
+    return 'You can switch between different personas/characters, each with custom voices and AI models. Be concise.';
   }
 
   // Default: short prompt

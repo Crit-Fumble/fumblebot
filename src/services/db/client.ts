@@ -372,4 +372,8 @@ export type {
   ChannelKBSource,
   ChannelKBType,
   UserSettings,
+  BotPersona,
+  PersonaWebhook,
+  BotSkill,
+  BotMemory,
 } from '.prisma/fumblebot'

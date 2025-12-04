@@ -12,11 +12,18 @@ let coreClient: CoreApiClient | null = null
  */
 export function getCoreClient(): CoreApiClient {
   if (!coreClient) {
-    const baseUrl = process.env.CORE_API_URL || 'https://core.crit-fumble.com'
-    const apiKey = process.env.CORE_API_KEY
+    // Use internal VPC URL if configured, otherwise public URL
+    const serverUrl = process.env.CORE_SERVER_URL
+    const serverPort = process.env.CORE_SERVER_PORT || '4000'
+    const baseUrl = serverUrl
+      ? (serverUrl.includes(':') ? serverUrl : `${serverUrl}:${serverPort}`)
+      : 'https://core.crit-fumble.com'
+
+    // Use CORE_SECRET for service-to-service auth
+    const apiKey = process.env.CORE_SECRET
 
     if (!apiKey) {
-      throw new Error('CORE_API_KEY environment variable is required')
+      console.warn('[CoreClient] CORE_SECRET not set - some API calls may fail')
     }
 
     coreClient = new CoreApiClient({

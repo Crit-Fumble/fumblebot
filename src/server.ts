@@ -102,6 +102,7 @@ import {
   getServerConfig,
   getCoreProxyConfig,
 } from './config.js';
+import { initializePersonaSystem } from './services/persona/index.js';
 
 // Re-export types
 export type { Platform, PlatformContext, PlatformServerConfig, ActivityServerConfig } from './models/types.js';
@@ -478,6 +479,15 @@ if (isMainModule) {
         setFumbleBotClient(discordBot); // Make bot available to voice API
         voiceAssistant.setDiscordClient(discordBot.client); // Enable voice state tracking
         console.log('[Platform] Discord bot started');
+
+        // Initialize persona system (seeds default persona and skills)
+        try {
+          await initializePersonaSystem();
+          console.log('[Platform] Persona system initialized');
+        } catch (err) {
+          console.error('[Platform] Failed to initialize persona system:', err);
+          // Continue running - persona features will be limited
+        }
       } catch (err) {
         console.error('[Platform] Failed to start Discord bot:', err);
         // Continue running API server even if bot fails

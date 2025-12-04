@@ -34,6 +34,7 @@ import {
   KBHandler,
   WebHandler,
   WorldAnvilHandler,
+  PersonaHandler,
 } from './handlers/index.js';
 
 // Configuration
@@ -58,6 +59,7 @@ class FumbleBotMCPServer {
   private kbHandler: KBHandler;
   private webHandler: WebHandler;
   private worldAnvilHandler: WorldAnvilHandler;
+  private personaHandler: PersonaHandler;
 
   constructor(prismaClient?: typeof prisma) {
     this.server = new Server(
@@ -89,6 +91,7 @@ class FumbleBotMCPServer {
     this.kbHandler = new KBHandler();
     this.webHandler = new WebHandler();
     this.worldAnvilHandler = new WorldAnvilHandler();
+    this.personaHandler = new PersonaHandler();
 
     this.setupHandlers();
   }
@@ -168,6 +171,11 @@ class FumbleBotMCPServer {
       return await this.worldAnvilHandler.handle(name, args);
     }
 
+    // Persona, memory, and skill tools
+    if (name.startsWith('persona_') || name.startsWith('memory_') || name.startsWith('skill_')) {
+      return await this.personaHandler.handle(name, args);
+    }
+
     throw new Error(`Unknown tool: ${name}`);
   }
 
@@ -189,6 +197,9 @@ class FumbleBotMCPServer {
     console.error('  - kb_*                : Knowledge Base (TTRPG rules, FoundryVTT docs)');
     console.error('  - web_*               : Web fetch & search (5e.tools, D&D Beyond, Cypher, Fandom wikis)');
     console.error('  - worldanvil_*        : World Anvil (campaign worlds, articles, lore)');
+    console.error('  - persona_*           : Persona management (characters, voices, skills)');
+    console.error('  - memory_*            : Memory operations (remember, recall, forget)');
+    console.error('  - skill_*             : Skill tracking (learn, record usage)');
     console.error('');
     console.error(`AI Service status: Anthropic ${this.aiService.isProviderAvailable('anthropic') ? 'configured' : 'NOT configured'}, OpenAI ${this.aiService.isProviderAvailable('openai') ? 'configured' : 'NOT configured'}`);
   }

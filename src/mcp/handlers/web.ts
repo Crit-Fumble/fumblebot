@@ -22,6 +22,9 @@ export class WebHandler {
       case 'web_search_forgotten_realms':
         return await this.webSearchForgottenRealms(args);
 
+      case 'web_search_fandom_wiki':
+        return await this.webSearchFandomWiki(args);
+
       case 'web_search_dndbeyond_support':
         return await this.webSearchDndBeyondSupport(args);
 
@@ -449,6 +452,175 @@ ${html.slice(0, 20000)}`;
           {
             type: 'text',
             text: `Failed to search Forgotten Realms Wiki for "${query}": ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  // Fandom wiki base URLs
+  private readonly FANDOM_WIKIS: Record<string, { url: string; name: string; setting: string }> = {
+    'forgotten-realms': {
+      url: 'https://forgottenrealms.fandom.com',
+      name: 'Forgotten Realms Wiki',
+      setting: 'Forgotten Realms (D&D)',
+    },
+    'eberron': {
+      url: 'https://eberron.fandom.com',
+      name: 'Eberron Wiki',
+      setting: 'Eberron (D&D)',
+    },
+    'critical-role': {
+      url: 'https://criticalrole.fandom.com',
+      name: 'Critical Role Wiki',
+      setting: 'Exandria (Critical Role)',
+    },
+    'pathfinder': {
+      url: 'https://pathfinderwiki.com',
+      name: 'PathfinderWiki',
+      setting: 'Golarion (Pathfinder)',
+    },
+    'dragonlance': {
+      url: 'https://dragonlance.fandom.com',
+      name: 'Dragonlance Wiki',
+      setting: 'Dragonlance (D&D)',
+    },
+    'greyhawk': {
+      url: 'https://greyhawkonline.com/greyhawkwiki',
+      name: 'Greyhawk Wiki',
+      setting: 'Greyhawk (D&D)',
+    },
+    'spelljammer': {
+      url: 'https://spelljammer.fandom.com',
+      name: 'Spelljammer Wiki',
+      setting: 'Spelljammer (D&D)',
+    },
+    'planescape': {
+      url: 'https://planescape.fandom.com',
+      name: 'Planescape Wiki',
+      setting: 'Planescape (D&D)',
+    },
+    'ravenloft': {
+      url: 'https://ravenloft.fandom.com',
+      name: 'Ravenloft Wiki',
+      setting: 'Ravenloft (D&D)',
+    },
+  };
+
+  private async webSearchFandomWiki(args: any): Promise<MCPToolResult> {
+    const { query, wiki = 'forgotten-realms' } = args;
+    const wikiKey = wiki.toLowerCase().replace(/\s+/g, '-');
+    const wikiConfig = this.FANDOM_WIKIS[wikiKey];
+
+    if (!wikiConfig) {
+      const availableWikis = Object.keys(this.FANDOM_WIKIS).join(', ');
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Unknown wiki "${wiki}". Available wikis: ${availableWikis}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    try {
+      const baseUrl = wikiConfig.url;
+      // Most Fandom wikis use MediaWiki API
+      const searchUrl = `${baseUrl}/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&format=json`;
+
+      console.error(`[web_search_fandom_wiki] Searching ${wikiConfig.name} for "${query}"`);
+
+      const searchResponse = await fetch(searchUrl, {
+        headers: {
+          'User-Agent': 'FumbleBot/1.0 (TTRPG Assistant Bot)',
+        },
+      });
+
+      if (!searchResponse.ok) {
+        throw new Error(`Search failed: HTTP ${searchResponse.status}`);
+      }
+
+      const searchResults = await searchResponse.json() as [string, string[], string[], string[]];
+      const [, titles, , urls] = searchResults;
+
+      if (titles.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `No results found for "${query}" in ${wikiConfig.name}. Try different search terms.`,
+            },
+          ],
+        };
+      }
+
+      // Fetch the first matching article
+      const articleUrl = urls[0];
+      const articleResponse = await fetch(articleUrl, {
+        headers: {
+          'User-Agent': 'FumbleBot/1.0 (TTRPG Assistant Bot)',
+        },
+      });
+
+      if (!articleResponse.ok) {
+        throw new Error(`Article fetch failed: HTTP ${articleResponse.status}`);
+      }
+
+      const html = await articleResponse.text();
+      const aiService = AIService.getInstance();
+
+      const extractionPrompt = `You are extracting TTRPG lore from ${wikiConfig.name} (${wikiConfig.setting} setting wiki).
+
+Search Query: "${query}"
+Article URL: ${articleUrl}
+Other matching articles: ${titles.slice(1).join(', ') || 'None'}
+
+Instructions:
+- Extract the main content about "${titles[0]}" from the HTML
+- Format as clean markdown with proper headings
+- Include key lore details: history, description, location, notable events
+- For characters: include race, class, alignment, affiliations, notable deeds
+- For locations: include geography, history, notable inhabitants, organizations
+- For items/artifacts: include powers, history, current location
+- For deities: include domains, worshippers, holy days, symbols
+- Keep it concise but informative (aim for ~500-800 words)
+- If there are related articles of interest, mention them at the end
+- End with: "Source: [${wikiConfig.name}](${articleUrl})"
+
+HTML Content (first 20000 chars):
+${html.slice(0, 20000)}`;
+
+      const result = await aiService.lookup(
+        extractionPrompt,
+        `You are extracting ${wikiConfig.setting} lore. Be thorough and accurate. Focus on the most important and interesting details.`,
+        { maxTokens: 1500 }
+      );
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: result.content,
+          },
+        ],
+        _meta: {
+          query,
+          wiki: wikiKey,
+          wikiName: wikiConfig.name,
+          articleTitle: titles[0],
+          articleUrl,
+          otherResults: titles.slice(1),
+        },
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Failed to search ${wikiConfig.name} for "${query}": ${error instanceof Error ? error.message : 'Unknown error'}`,
           },
         ],
         isError: true,

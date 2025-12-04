@@ -3,6 +3,7 @@
  * Handles dice rolling, NPC generation, lore generation, and voice control
  */
 
+import { rollDice, validateDiceNotation } from '@crit-fumble/core';
 import type { AIService } from '../../services/ai/service.js';
 import type { MCPToolResult } from './types.js';
 import { voiceHandler } from './voice.js';
@@ -31,7 +32,7 @@ export class FumbleHandler {
 
     switch (name) {
       case 'fumble_roll_dice':
-        return await this.rollDice(args);
+        return await this.handleRollDice(args);
 
       case 'fumble_generate_npc':
         return await this.generateNPC(args);
@@ -44,42 +45,36 @@ export class FumbleHandler {
     }
   }
 
-  private async rollDice(args: any): Promise<MCPToolResult> {
+  private async handleRollDice(args: any): Promise<MCPToolResult> {
     const { notation, label } = args;
 
-    // Simple dice roller (can be enhanced)
-    const match = notation.match(/^(\d+)d(\d+)([+-]\d+)?$/i);
-    if (!match) {
-      throw new Error(`Invalid dice notation: ${notation}`);
+    // Validate notation first
+    if (!validateDiceNotation(notation)) {
+      throw new Error(`Invalid dice notation: ${notation}. Examples: 2d6+3, 4d6dl (drop lowest), 2d20kh (advantage), 1d20+5`);
     }
 
-    const [, numDice, sides, modifier] = match;
-    const rolls: number[] = [];
-    let total = 0;
+    // Use core's full-featured dice roller
+    const result = rollDice(notation, label);
 
-    for (let i = 0; i < parseInt(numDice); i++) {
-      const roll = Math.floor(Math.random() * parseInt(sides)) + 1;
-      rolls.push(roll);
-      total += roll;
+    // Format output for display
+    let output = '';
+    if (label) {
+      output += `**${label}**\n`;
     }
+    output += `🎲 ${result.output}\n`;
+    output += `**Total: ${result.total}**`;
 
-    if (modifier) {
-      total += parseInt(modifier);
+    if (result.isCrit) {
+      output += ' 🎯 **CRITICAL HIT!**';
+    } else if (result.isFumble) {
+      output += ' 💀 **FUMBLE!**';
     }
-
-    const result = {
-      notation,
-      label,
-      rolls,
-      total,
-      modifier: modifier || '+0',
-    };
 
     return {
       content: [
         {
           type: 'text',
-          text: JSON.stringify(result, null, 2),
+          text: output,
         },
       ],
     };
