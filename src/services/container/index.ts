@@ -8,7 +8,6 @@ export {
   ContainerClient,
   getContainerClient,
   configureContainerClient,
-  type ContainerClientConfig,
   type UserContext,
 } from './client.js';
 

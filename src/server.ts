@@ -100,8 +100,8 @@ import {
   loadGradientConfig,
   loadDiscordConfig,
   getServerConfig,
-  getCoreProxyConfig,
 } from './config.js';
+import { getCoreClient } from './lib/core-client.js';
 import { initializePersonaSystem } from './services/persona/index.js';
 
 // Re-export types
@@ -297,21 +297,15 @@ export class PlatformServer {
           results.database = { status: 'error', error: err instanceof Error ? err.message : 'Unknown error' };
         }
 
-        // Check Core API connection
+        // Check Core API connection (using SDK)
         try {
-          const coreProxyConfig = getCoreProxyConfig();
-          const coreUrl = coreProxyConfig
-            ? (coreProxyConfig.url.includes(':') ? coreProxyConfig.url : `${coreProxyConfig.url}:${coreProxyConfig.port}`)
-            : 'https://core.crit-fumble.com';
           const coreStart = Date.now();
-          const coreResponse = await fetch(`${coreUrl}/health`, {
-            method: 'GET',
-            signal: AbortSignal.timeout(5000),
-          });
-          if (coreResponse.ok) {
+          const coreClient = getCoreClient();
+          const health = await coreClient.health();
+          if (health.status === 'ok') {
             results.core = { status: 'ok', latencyMs: Date.now() - coreStart };
           } else {
-            results.core = { status: 'error', error: `HTTP ${coreResponse.status}` };
+            results.core = { status: 'error', error: 'Core unhealthy' };
           }
         } catch (err) {
           results.core = { status: 'error', error: err instanceof Error ? err.message : 'Unknown error' };

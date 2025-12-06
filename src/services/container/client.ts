@@ -4,28 +4,19 @@
  * Client for interacting with Core's container API.
  * Manages adventure terminal environments for Discord Activities.
  *
+ * Now uses @crit-fumble/core SDK instead of direct HTTP calls.
+ *
  * @see https://core.crit-fumble.com README for API documentation
  */
 
 import type {
-  ContainerStartRequest,
   ContainerStartResponse,
-  ContainerStopRequest,
   ContainerStopResponse,
   ContainerStatusResponse,
-  ContainerExecRequest,
   ContainerExecResponse,
 } from '@crit-fumble/core';
+import { getCoreClient } from '../../lib/core-client.js';
 import { getCoreProxyConfig } from '../../config.js';
-
-export interface ContainerClientConfig {
-  /** Core API URL (internal or public) */
-  coreUrl: string;
-  /** Shared secret for service auth */
-  coreSecret: string;
-  /** Request timeout in ms */
-  timeout?: number;
-}
 
 export interface UserContext {
   userId: string;
@@ -38,7 +29,7 @@ export interface UserContext {
  * Client for Core's container API
  *
  * Provides service-to-service communication with Core for container management.
- * All requests are authenticated with X-Core-Secret header.
+ * Uses the @crit-fumble/core SDK for API calls.
  *
  * @example
  * ```typescript
@@ -61,64 +52,10 @@ export interface UserContext {
  * ```
  */
 export class ContainerClient {
-  private config: Required<ContainerClientConfig>;
+  private coreUrl: string;
 
-  constructor(config: ContainerClientConfig) {
-    this.config = {
-      timeout: 30000,
-      ...config,
-    };
-  }
-
-  /**
-   * Build headers for Core API requests
-   */
-  private buildHeaders(context: UserContext): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-Core-Secret': this.config.coreSecret,
-      'X-User-Id': context.userId,
-      'X-Guild-Id': context.guildId,
-      'X-Channel-Id': context.channelId,
-    };
-
-    if (context.userName) {
-      headers['X-User-Name'] = context.userName;
-    }
-
-    return headers;
-  }
-
-  /**
-   * Make a request to Core API
-   */
-  private async request<T>(
-    method: string,
-    path: string,
-    context: UserContext,
-    body?: object
-  ): Promise<T> {
-    const url = `${this.config.coreUrl}${path}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
-
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: this.buildHeaders(context),
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: response.statusText }));
-        throw new Error(`Container API error: ${error.message || response.statusText}`);
-      }
-
-      return response.json();
-    } finally {
-      clearTimeout(timeoutId);
-    }
+  constructor(coreUrl: string) {
+    this.coreUrl = coreUrl;
   }
 
   /**
@@ -128,19 +65,13 @@ export class ContainerClient {
    * If a container already exists for this scope, it returns the existing one.
    */
   async start(context: UserContext): Promise<ContainerStartResponse> {
-    const body: ContainerStartRequest = {
-      guildId: context.guildId,
-      channelId: context.channelId,
-    };
-
     console.log(`[Container] Starting container for guild ${context.guildId}, channel ${context.channelId}`);
 
-    const response = await this.request<ContainerStartResponse>(
-      'POST',
-      '/api/container/start',
-      context,
-      body
-    );
+    const coreClient = getCoreClient();
+    const response = await coreClient.container.start({
+      guildId: context.guildId,
+      channelId: context.channelId,
+    });
 
     console.log(`[Container] Started: ${response.containerId} on port ${response.port}`);
     return response;
@@ -150,19 +81,10 @@ export class ContainerClient {
    * Stop a container
    */
   async stop(context: UserContext): Promise<ContainerStopResponse> {
-    const body: ContainerStopRequest = {
-      guildId: context.guildId,
-      channelId: context.channelId,
-    };
-
     console.log(`[Container] Stopping container for guild ${context.guildId}, channel ${context.channelId}`);
 
-    const response = await this.request<ContainerStopResponse>(
-      'POST',
-      '/api/container/stop',
-      context,
-      body
-    );
+    const coreClient = getCoreClient();
+    const response = await coreClient.container.stop(context.guildId, context.channelId);
 
     console.log(`[Container] Stopped`);
     return response;
@@ -172,16 +94,8 @@ export class ContainerClient {
    * Get container status
    */
   async status(context: UserContext): Promise<ContainerStatusResponse> {
-    const params = new URLSearchParams({
-      guildId: context.guildId,
-      channelId: context.channelId,
-    });
-
-    return this.request<ContainerStatusResponse>(
-      'GET',
-      `/api/container/status?${params}`,
-      context
-    );
+    const coreClient = getCoreClient();
+    return coreClient.container.status(context.guildId, context.channelId);
   }
 
   /**
@@ -202,21 +116,15 @@ export class ContainerClient {
     context: UserContext,
     options: { command: string; timeout?: number }
   ): Promise<ContainerExecResponse> {
-    const body: ContainerExecRequest = {
+    console.log(`[Container] Executing: ${options.command}`);
+
+    const coreClient = getCoreClient();
+    const response = await coreClient.container.exec({
       guildId: context.guildId,
       channelId: context.channelId,
       command: options.command,
       timeout: options.timeout,
-    };
-
-    console.log(`[Container] Executing: ${options.command}`);
-
-    const response = await this.request<ContainerExecResponse>(
-      'POST',
-      '/api/container/exec',
-      context,
-      body
-    );
+    });
 
     if (!response.success) {
       console.warn(`[Container] Command failed with exit code ${response.exitCode}`);
@@ -238,8 +146,8 @@ export class ContainerClient {
     });
 
     // Use wss:// for HTTPS core URL, ws:// for HTTP
-    const wsProtocol = this.config.coreUrl.startsWith('https') ? 'wss' : 'ws';
-    const baseUrl = this.config.coreUrl.replace(/^https?/, wsProtocol);
+    const wsProtocol = this.coreUrl.startsWith('https') ? 'wss' : 'ws';
+    const baseUrl = this.coreUrl.replace(/^https?/, wsProtocol);
 
     return `${baseUrl}/api/container/terminal?${params}`;
   }
@@ -249,10 +157,9 @@ export class ContainerClient {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.config.coreUrl}/health`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      return response.ok;
+      const coreClient = getCoreClient();
+      const health = await coreClient.health();
+      return health.status === 'ok';
     } catch {
       return false;
     }
@@ -269,22 +176,16 @@ export function getContainerClient(): ContainerClient {
     if (!coreConfig) {
       throw new Error('CORE_SERVER_URL environment variable is required for container client');
     }
-    if (!coreConfig.secret) {
-      throw new Error('CORE_SECRET environment variable is required for container client');
-    }
 
     const coreUrl = coreConfig.url.includes(':') ? coreConfig.url : `${coreConfig.url}:${coreConfig.port}`;
 
-    instance = new ContainerClient({
-      coreUrl,
-      coreSecret: coreConfig.secret,
-    });
+    instance = new ContainerClient(coreUrl);
   }
 
   return instance;
 }
 
-export function configureContainerClient(config: ContainerClientConfig): ContainerClient {
-  instance = new ContainerClient(config);
+export function configureContainerClient(coreUrl: string): ContainerClient {
+  instance = new ContainerClient(coreUrl);
   return instance;
 }
