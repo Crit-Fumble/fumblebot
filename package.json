@@ -86,7 +86,7 @@
     "@deepgram/sdk": "^4.11.2",
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.17.0",
-    "@modelcontextprotocol/sdk": "^1.23.0",
+    "@modelcontextprotocol/sdk": "^1.24.3",
     "@prisma/adapter-pg": "^7.0.1",
     "@prisma/client": "^7.0.0",
     "cookie-parser": "^1.4.7",
