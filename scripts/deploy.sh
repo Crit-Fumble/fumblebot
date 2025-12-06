@@ -53,6 +53,13 @@ rm -f /tmp/fumblebot-dist.tar.gz
 # Include node_modules to avoid memory-intensive npm install on small droplets
 # Use --exclude to skip devDependencies-only packages and build caches
 # Keep 'prisma' package - needed for prisma generate on server
+
+# Show what we're packing
+echo -e "  ${BLUE}Packing: dist, prisma, package.json, node_modules${NC}"
+echo -e "  ${BLUE}Excluding: .cache, @types, typescript, vitest, husky${NC}"
+
+# Use verbose mode with progress indicator
+echo -e "  ${BLUE}Creating tarball (this may take 30-60 seconds)...${NC}"
 tar -czf /tmp/fumblebot-dist.tar.gz \
     --exclude='node_modules/.cache' \
     --exclude='node_modules/@types' \
@@ -60,7 +67,10 @@ tar -czf /tmp/fumblebot-dist.tar.gz \
     --exclude='node_modules/vitest' \
     --exclude='node_modules/@vitest' \
     --exclude='node_modules/husky' \
+    --checkpoint=1000 \
+    --checkpoint-action=dot \
     dist prisma package.json package-lock.json node_modules
+echo ""  # newline after dots
 if [ $? -ne 0 ]; then
     echo -e "${RED}Failed to create tarball${NC}"
     exit 1

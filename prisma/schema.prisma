@@ -228,6 +228,124 @@ model BotCommand {
 }
 
 // ===========================================
+// Context & Memory System
+// Hierarchical Discord structure cache for AI context
+// ===========================================
+
+// Cached Discord user - tracks users FumbleBot has interacted with
+model DiscordUser {
+  id               String   @id @default(cuid())
+  discordId        String   @unique
+  username         String
+  displayName      String?
+  avatarUrl        String?
+
+  // Tracking
+  firstSeen        DateTime @default(now())
+  lastSeen         DateTime @updatedAt
+  interactionCount Int      @default(0)
+
+  // Relations
+  messages         CachedMessage[]
+
+  @@index([discordId])
+  @@map("discord_users")
+}
+
+// Cached Discord category - top-level organization
+model CachedCategory {
+  id           String   @id @default(cuid())
+  categoryId   String   @unique // Discord snowflake, or "uncategorized" for null
+  guildId      String
+  name         String
+  position     Int      @default(0)
+
+  // Cache metadata
+  lastPolled   DateTime @default(now())
+
+  // Relations
+  channels     CachedChannel[]
+
+  @@index([guildId])
+  @@map("cached_categories")
+}
+
+// Cached Discord channel - text, voice, forum, etc.
+model CachedChannel {
+  id           String   @id @default(cuid())
+  channelId    String   @unique // Discord snowflake
+  guildId      String
+  categoryId   String?  // null = uncategorized
+  parentId     String?  // For threads: parent channel ID
+
+  name         String
+  type         String   // text, voice, thread, forum, announcement
+  topic        String?  @db.Text
+  position     Int      @default(0)
+
+  // Thread-specific
+  isThread     Boolean  @default(false)
+  threadOwnerId String? // For threads: who created it
+
+  // Cache metadata
+  lastPolled   DateTime @default(now())
+  messageCount Int      @default(0) // Cached message count
+
+  // Relations
+  category     CachedCategory? @relation(fields: [categoryId], references: [categoryId])
+  messages     CachedMessage[]
+
+  @@index([guildId])
+  @@index([guildId, categoryId])
+  @@index([parentId])
+  @@map("cached_channels")
+}
+
+// Cached Discord message - for context and link reconstruction
+model CachedMessage {
+  id           String   @id @default(cuid())
+  messageId    String   @unique // Discord snowflake
+  guildId      String
+  channelId    String
+  threadId     String?  // If in a thread
+
+  // Author
+  authorId     String   // Discord user ID
+  author       DiscordUser @relation(fields: [authorId], references: [discordId])
+
+  // Content
+  content      String   @db.Text
+  attachments  Json     @default("[]") // [{url, filename, contentType, size}]
+  embeds       Json     @default("[]") // [{url, title, description, thumbnail}]
+
+  // Reply threading
+  replyToId    String?  // messageId of parent message
+
+  // Timestamps
+  createdAt    DateTime // Discord message timestamp
+  editedAt     DateTime? // If edited
+  cachedAt     DateTime @default(now())
+
+  // Context tier (for cache management)
+  // hot = actively referenced, warm = recent, cold = archived
+  tier         String   @default("warm")
+
+  // AI-generated summary (for cold storage compression)
+  summary      String?  @db.Text
+
+  // Relations
+  channel      CachedChannel @relation(fields: [channelId], references: [channelId])
+
+  // Link reconstruction: https://discord.com/channels/{guildId}/{channelId}/{messageId}
+
+  @@index([guildId, channelId])
+  @@index([authorId])
+  @@index([createdAt])
+  @@index([tier])
+  @@map("cached_messages")
+}
+
+// ===========================================
 // Auth.js / Web Sessions
 // ===========================================
 

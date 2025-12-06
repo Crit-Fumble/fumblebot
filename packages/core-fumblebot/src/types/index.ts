@@ -3,6 +3,9 @@
  * Type definitions for FumbleBot SDK
  */
 
+// Re-export context/memory system types
+export * from './context.js';
+
 // =============================================================================
 // Platform Types
 // =============================================================================

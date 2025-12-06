@@ -80,7 +80,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "@auth/express": "^0.12.1",
-    "@crit-fumble/core": "^10.4.4",
+    "@crit-fumble/core": "^10.4.6",
     "@crit-fumble/core-fumblebot": "^0.1.0",
     "@crit-fumble/worldanvil": "^3.0.0",
     "@deepgram/sdk": "^4.11.2",

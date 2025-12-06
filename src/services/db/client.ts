@@ -377,4 +377,9 @@ export type {
   PersonaWebhook,
   BotSkill,
   BotMemory,
+  // Context & Memory System
+  DiscordUser,
+  CachedCategory,
+  CachedChannel,
+  CachedMessage,
 } from '.prisma/fumblebot'
