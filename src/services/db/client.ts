@@ -124,7 +124,8 @@ const pool = new pg.Pool({
 })
 
 // Create the PostgreSQL adapter using the pool
-const adapter = new PrismaPg({ pool })
+// Note: PrismaPg expects the pool directly, not wrapped in an object
+const adapter = new PrismaPg(pool)
 
 // Type the global for hot reloading in development
 const globalForPrisma = globalThis as unknown as { prisma: InstanceType<typeof PrismaClient> | undefined }

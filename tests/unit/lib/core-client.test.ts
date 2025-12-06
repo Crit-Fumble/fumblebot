@@ -43,11 +43,21 @@ describe('Core Client', () => {
       expect(client).toBeDefined();
     });
 
-    it('should throw error when API key is missing', () => {
+    it('should warn when API key is missing but still create client', () => {
       delete process.env.CORE_API_KEY;
-      process.env.CORE_API_URL = 'https://test.crit-fumble.com';
+      delete process.env.CORE_SECRET;
+      process.env.CORE_SERVER_URL = 'https://test.crit-fumble.com';
 
-      expect(() => getCoreClient()).toThrow('CORE_API_KEY environment variable is required');
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const client = getCoreClient();
+
+      expect(client).toBeDefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('CORE_SECRET not set')
+      );
+
+      warnSpy.mockRestore();
     });
 
     it('should return same instance on multiple calls (singleton)', () => {
