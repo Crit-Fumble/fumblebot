@@ -1,6 +1,6 @@
 /**
  * Message Handler
- * Handles direct messages and bot mentions
+ * Handles direct messages, bot mentions, and admin channel monitoring
  */
 
 import {
@@ -14,10 +14,11 @@ import type { Message, ButtonInteraction, TextChannel } from 'discord.js'
 import type { FumbleBotClient } from '../client.js'
 import { AIService } from '../../ai/service.js'
 import { isKnowledgeBaseConfigured, getKnowledgeBaseClient } from '../../../lib/knowledge-base-client.js'
+import { isAdminChannel, handleAdminChannelMessage, getAdminChannelId } from './admin-channel.js'
 
 /**
  * Handle incoming messages
- * Responds to bot mentions and DMs
+ * Responds to bot mentions, DMs, and monitors admin channel
  */
 export async function handleMessage(
   message: Message,
@@ -25,6 +26,25 @@ export async function handleMessage(
 ): Promise<void> {
   // Ignore messages from bots (including self)
   if (message.author.bot) return
+
+  // Check if this is the admin channel - handle with autonomous logic
+  if (isAdminChannel(message)) {
+    // In admin channel, respond to mentions immediately, or analyze for autonomous response
+    const isMentioned = message.mentions.has(bot.user!.id)
+    if (isMentioned) {
+      // Handle mention normally in admin channel
+      const content = message.content
+        .replace(new RegExp(`<@!?${bot.user!.id}>`), '')
+        .trim()
+      if (content) {
+        await handleAIChat(message, content, bot)
+      }
+      return
+    }
+    // Autonomous response analysis for admin channel
+    await handleAdminChannelMessage(message, bot)
+    return
+  }
 
   // Check if bot was mentioned or if this is a DM
   const isMentioned = message.mentions.has(bot.user!.id)

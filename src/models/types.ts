@@ -41,6 +41,8 @@ export interface DiscordConfig {
   clientSecret: string;
   publicKey: string;
   guildId?: string;
+  /** Admin channel where FumbleBot responds autonomously */
+  adminChannelId?: string;
 }
 
 export interface OpenAIConfig {

@@ -54,6 +54,7 @@ export function loadDiscordConfig(): DiscordConfig {
     clientSecret: getEnv('FUMBLEBOT_DISCORD_CLIENT_SECRET'),
     publicKey: getEnv('FUMBLEBOT_DISCORD_PUBLIC_KEY'),
     guildId: getEnvOptional('FUMBLEBOT_DISCORD_GUILD_ID') || undefined,
+    adminChannelId: getEnvOptional('FUMBLEBOT_DISCORD_ADMIN_CHANNEL') || undefined,
   }
 }
 
