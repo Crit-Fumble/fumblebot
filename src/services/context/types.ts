@@ -80,6 +80,48 @@ export interface UserContext {
   lastSeen: Date
 }
 
+// Supported TTRPG game systems
+export type GameSystem =
+  | '5e'           // D&D 5th Edition
+  | 'pf2e'         // Pathfinder 2nd Edition
+  | 'pf1e'         // Pathfinder 1st Edition
+  | 'cypher'       // Cypher System (Numenera, The Strange, etc.)
+  | 'bitd'         // Blades in the Dark
+  | 'swn'          // Stars Without Number
+  | 'mothership'   // Mothership
+  | 'coc'          // Call of Cthulhu
+  | 'fate'         // Fate Core/Accelerated
+  | 'pbta'         // Powered by the Apocalypse
+  | 'savage'       // Savage Worlds
+  | 'dcc'          // Dungeon Crawl Classics
+  | 'osr'          // Old School Renaissance (general)
+  | 'other'        // Unknown/other system
+
+// How the game system was determined
+export type GameSystemSource = 'explicit' | 'inferred' | 'default'
+
+// Game context for a channel - tracks what system/campaign is being discussed
+export interface ChannelGameContext {
+  channelId: string
+  guildId: string
+
+  // Game system context
+  activeSystem: GameSystem | null          // Current game system
+  systemConfidence: number                  // 0-1, how confident we are
+  systemSource: GameSystemSource            // How it was determined
+
+  // Campaign context
+  campaignId: string | null                 // Link to Core campaign if any
+  campaignSetting: string | null            // "Forgotten Realms", "Golarion", "Homebrew"
+
+  // Conversation topics (rolling window of recent topics)
+  recentTopics: string[]                    // ["combat", "spells", "character-creation"]
+
+  // Timestamps
+  lastActivity: Date
+  lastSystemChange: Date | null
+}
+
 // Guild context - the full hierarchical structure
 export interface GuildContext {
   guildId: string
@@ -90,6 +132,10 @@ export interface GuildContext {
   // Quick lookup maps
   channelIndex: Map<string, ChannelContext>
   userIndex: Map<string, UserContext>
+  // Game context per channel
+  gameContextIndex: Map<string, ChannelGameContext>
+  // Guild-level default game system
+  defaultGameSystem: GameSystem | null
   // Polling metadata
   lastPolled: Date
   isPolling: boolean

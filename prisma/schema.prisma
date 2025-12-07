@@ -437,6 +437,195 @@ model UserSettings {
 }
 
 // ===========================================
+// AI Memory System (Per-User)
+// FumbleBot's memory of individual users, their preferences,
+// and conversation context. This stays in FumbleBot (not Core)
+// since it's specific to AI interaction patterns.
+// ===========================================
+
+// User's AI interaction preferences
+// Controls how FumbleBot communicates with each user
+model UserAIPreferences {
+  id              String   @id @default(cuid())
+  discordId       String   // Discord user ID
+  guildId         String?  // Guild-specific overrides (null = global default)
+
+  // Communication style
+  verbosity       String   @default("normal") // "brief", "normal", "detailed"
+  tone            String   @default("friendly") // "formal", "friendly", "casual", "dramatic"
+
+  // Model preferences
+  preferredModel  String?  // User's preferred model for responses
+
+  // TTS preferences
+  ttsVoice        String?  // Preferred TTS voice
+  ttsSpeed        Float    @default(1.0) // Speech rate multiplier
+
+  // STT preferences
+  sttLanguage     String   @default("en") // Speech recognition language
+
+  // Audit
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([discordId, guildId])
+  @@index([discordId])
+  @@map("user_ai_preferences")
+}
+
+// User-defined custom personas
+// Users can create their own AI personalities to interact with
+model UserPersona {
+  id              String   @id @default(cuid())
+  discordId       String   // Owner's Discord ID
+  guildId         String?  // Guild-specific (null = user's personal)
+
+  // Persona definition
+  name            String   // "Grumpy Bartender", "Wise Sage"
+  systemPrompt    String   @db.Text // Custom system prompt for this persona
+
+  // State
+  isActive        Boolean  @default(false) // Currently active in conversation
+
+  // Audit
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([discordId, guildId])
+  @@map("user_personas")
+}
+
+// FumbleBot's memory of each user
+// Stores facts, observations, and summaries about users
+model UserMemory {
+  id               String   @id @default(cuid())
+  discordId        String   // Discord user ID
+  guildId          String?  // Guild-specific context (null = global)
+
+  // Memory content
+  facts            Json     @default("[]") // Array of remembered facts [{fact, source, confidence, createdAt}]
+  summary          String?  @db.Text // AI-generated summary of this user
+
+  // Interaction tracking
+  lastInteraction  DateTime @default(now())
+  interactionCount Int      @default(0)
+
+  // Audit
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([discordId, guildId])
+  @@index([discordId])
+  @@map("user_memories")
+}
+
+// Conversation summaries for context management
+// Compressed summaries of past conversations
+model ConversationSummary {
+  id              String   @id @default(cuid())
+  discordId       String   // Primary user in conversation
+  guildId         String
+  channelId       String
+
+  // Summary content
+  summary         String   @db.Text // AI-generated conversation summary
+  keyTopics       Json     @default("[]") // Array of key topics discussed
+
+  // Conversation metadata
+  messageCount    Int      // Number of messages summarized
+  startedAt       DateTime // Conversation start time
+  endedAt         DateTime // Conversation end time
+
+  // Audit
+  createdAt       DateTime @default(now())
+
+  @@index([discordId, guildId, channelId])
+  @@index([guildId, channelId])
+  @@map("conversation_summaries")
+}
+
+// ===========================================
+// AI Thinking/Reasoning Log
+// Internal "thoughts" the AI has during processing
+// Useful for debugging, transparency, and learning
+// ===========================================
+
+// Individual thought/reasoning step
+model AIThought {
+  id              String   @id @default(cuid())
+
+  // Context
+  guildId         String?
+  channelId       String?
+  userId          String?  // User who triggered this chain
+  sessionId       String   // Groups thoughts in a single request
+
+  // Thought content
+  type            String   // "question", "reasoning", "lookup", "decision", "summary"
+  content         String   @db.Text // The thought itself
+
+  // For lookup-type thoughts
+  query           String?  // What was searched
+  sources         Json     @default("[]") // Sources consulted
+  result          String?  @db.Text // What was found
+
+  // Metadata
+  model           String?  // Which AI model generated this
+  tokensUsed      Int?     // Token count for this thought
+  durationMs      Int?     // How long this thought took
+  confidence      Float?   // Self-assessed confidence (0-1)
+
+  // Chain info
+  parentId        String?  // Previous thought in chain
+  parent          AIThought? @relation("ThoughtChain", fields: [parentId], references: [id])
+  children        AIThought[] @relation("ThoughtChain")
+  sequence        Int      @default(0) // Order in the chain
+
+  // Audit
+  createdAt       DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([guildId, channelId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("ai_thoughts")
+}
+
+// Channel-level game context
+// Tracks what game system/campaign is being discussed in each channel
+model ChannelGameContext {
+  id              String   @id @default(cuid())
+  guildId         String
+  channelId       String
+
+  // Game system context
+  activeSystem    String?  // "5e", "pf2e", "cypher", "bitd", etc.
+  systemConfidence Float   @default(0) // 0-1, how confident we are
+  systemSource    String   @default("default") // "explicit", "inferred", "default"
+
+  // Campaign context
+  campaignId      String?  // Link to Core campaign if any
+  campaignSetting String?  // "Forgotten Realms", "Golarion", "Homebrew"
+
+  // Conversation topics (rolling window)
+  recentTopics    Json     @default("[]") // Array of recent topics
+
+  // Timestamps
+  lastActivity    DateTime @default(now())
+  lastSystemChange DateTime?
+
+  // Audit
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([guildId, channelId])
+  @@index([guildId])
+  @@index([activeSystem])
+  @@map("channel_game_contexts")
+}
+
+// ===========================================
 // FumbleBot Character System
 // Tracks FumbleBot's personas, skills, and capabilities
 // ===========================================

@@ -15,10 +15,13 @@ import type {
   GuildContext,
   CategoryContext,
   ChannelContext,
+  ChannelGameContext,
   MessageContext,
   UserContext,
   ContextManagerConfig,
   TrackedChannelType,
+  GameSystem,
+  GameSystemSource,
 } from './types.js'
 import { messageToContext } from './types.js'
 
@@ -259,8 +262,207 @@ export class GuildContextManager {
   }
 
   // ===========================================
+  // Game Context Management
+  // ===========================================
+
+  /**
+   * Get the game context for a channel
+   */
+  getGameContext(guildId: string, channelId: string): ChannelGameContext | undefined {
+    const guild = this.guildContexts.get(guildId)
+    return guild?.gameContextIndex.get(channelId)
+  }
+
+  /**
+   * Get or create game context for a channel
+   */
+  getOrCreateGameContext(guildId: string, channelId: string): ChannelGameContext {
+    let context = this.guildContexts.get(guildId)
+    if (!context) {
+      context = this.createEmptyContext(guildId, 'Unknown')
+      this.guildContexts.set(guildId, context)
+    }
+
+    let gameContext = context.gameContextIndex.get(channelId)
+    if (!gameContext) {
+      gameContext = this.createEmptyGameContext(guildId, channelId)
+      context.gameContextIndex.set(channelId, gameContext)
+    }
+
+    return gameContext
+  }
+
+  /**
+   * Set the active game system for a channel (explicit user action)
+   */
+  async setGameSystem(
+    guildId: string,
+    channelId: string,
+    system: GameSystem,
+    source: GameSystemSource = 'explicit'
+  ): Promise<ChannelGameContext> {
+    const gameContext = this.getOrCreateGameContext(guildId, channelId)
+
+    gameContext.activeSystem = system
+    gameContext.systemConfidence = source === 'explicit' ? 1.0 : 0.8
+    gameContext.systemSource = source
+    gameContext.lastSystemChange = new Date()
+    gameContext.lastActivity = new Date()
+
+    // Persist to database
+    await this.persistGameContext(gameContext)
+
+    console.log(`[Context] Set game system for ${channelId}: ${system} (${source})`)
+    return gameContext
+  }
+
+  /**
+   * Infer game system from message content (lower confidence)
+   */
+  async inferGameSystem(
+    guildId: string,
+    channelId: string,
+    system: GameSystem,
+    confidence: number
+  ): Promise<ChannelGameContext> {
+    const gameContext = this.getOrCreateGameContext(guildId, channelId)
+
+    // Only update if we're more confident than current, or if no system set
+    if (!gameContext.activeSystem || confidence > gameContext.systemConfidence) {
+      gameContext.activeSystem = system
+      gameContext.systemConfidence = confidence
+      gameContext.systemSource = 'inferred'
+      gameContext.lastSystemChange = new Date()
+
+      await this.persistGameContext(gameContext)
+      console.log(`[Context] Inferred game system for ${channelId}: ${system} (confidence: ${confidence})`)
+    }
+
+    gameContext.lastActivity = new Date()
+    return gameContext
+  }
+
+  /**
+   * Set campaign context for a channel
+   */
+  async setCampaignContext(
+    guildId: string,
+    channelId: string,
+    campaignId: string | null,
+    setting: string | null
+  ): Promise<ChannelGameContext> {
+    const gameContext = this.getOrCreateGameContext(guildId, channelId)
+
+    gameContext.campaignId = campaignId
+    gameContext.campaignSetting = setting
+    gameContext.lastActivity = new Date()
+
+    await this.persistGameContext(gameContext)
+    console.log(`[Context] Set campaign for ${channelId}: ${setting || 'none'} (${campaignId || 'no ID'})`)
+
+    return gameContext
+  }
+
+  /**
+   * Add topics to the rolling window
+   */
+  addTopics(guildId: string, channelId: string, topics: string[]): ChannelGameContext {
+    const gameContext = this.getOrCreateGameContext(guildId, channelId)
+
+    // Add new topics, keeping only unique recent ones (max 10)
+    const allTopics = [...gameContext.recentTopics, ...topics]
+    const uniqueTopics = [...new Set(allTopics)]
+    gameContext.recentTopics = uniqueTopics.slice(-10)
+    gameContext.lastActivity = new Date()
+
+    return gameContext
+  }
+
+  /**
+   * Get effective game system for a channel (falls back to guild default)
+   */
+  getEffectiveGameSystem(guildId: string, channelId: string): { system: GameSystem | null; source: GameSystemSource } {
+    const gameContext = this.getGameContext(guildId, channelId)
+    if (gameContext?.activeSystem) {
+      return { system: gameContext.activeSystem, source: gameContext.systemSource }
+    }
+
+    const guildContext = this.guildContexts.get(guildId)
+    if (guildContext?.defaultGameSystem) {
+      return { system: guildContext.defaultGameSystem, source: 'default' }
+    }
+
+    return { system: null, source: 'default' }
+  }
+
+  /**
+   * Set guild-level default game system
+   */
+  async setGuildDefaultSystem(guildId: string, system: GameSystem | null): Promise<void> {
+    let context = this.guildContexts.get(guildId)
+    if (!context) {
+      context = this.createEmptyContext(guildId, 'Unknown')
+      this.guildContexts.set(guildId, context)
+    }
+
+    context.defaultGameSystem = system
+    console.log(`[Context] Set guild ${guildId} default system: ${system || 'none'}`)
+
+    // Persist to GuildContext table (if we have one) or GuildSettings
+    // For now, we'll store this in GuildContext prisma model when we add it
+  }
+
+  // ===========================================
   // Private helpers
   // ===========================================
+
+  private createEmptyGameContext(guildId: string, channelId: string): ChannelGameContext {
+    return {
+      channelId,
+      guildId,
+      activeSystem: null,
+      systemConfidence: 0,
+      systemSource: 'default',
+      campaignId: null,
+      campaignSetting: null,
+      recentTopics: [],
+      lastActivity: new Date(),
+      lastSystemChange: null,
+    }
+  }
+
+  private async persistGameContext(gameContext: ChannelGameContext): Promise<void> {
+    await prisma.channelGameContext.upsert({
+      where: {
+        guildId_channelId: {
+          guildId: gameContext.guildId,
+          channelId: gameContext.channelId,
+        },
+      },
+      create: {
+        guildId: gameContext.guildId,
+        channelId: gameContext.channelId,
+        activeSystem: gameContext.activeSystem,
+        systemConfidence: gameContext.systemConfidence,
+        systemSource: gameContext.systemSource,
+        campaignId: gameContext.campaignId,
+        campaignSetting: gameContext.campaignSetting,
+        recentTopics: gameContext.recentTopics,
+        lastActivity: gameContext.lastActivity,
+        lastSystemChange: gameContext.lastSystemChange,
+      },
+      update: {
+        activeSystem: gameContext.activeSystem,
+        systemConfidence: gameContext.systemConfidence,
+        systemSource: gameContext.systemSource,
+        campaignId: gameContext.campaignId,
+        campaignSetting: gameContext.campaignSetting,
+        recentTopics: gameContext.recentTopics,
+        lastActivity: gameContext.lastActivity,
+        lastSystemChange: gameContext.lastSystemChange,
+      },
+    })
+  }
 
   private createEmptyContext(guildId: string, guildName: string): GuildContext {
     return {
@@ -270,6 +472,8 @@ export class GuildContextManager {
       uncategorizedChannels: new Map(),
       channelIndex: new Map(),
       userIndex: new Map(),
+      gameContextIndex: new Map(),
+      defaultGameSystem: null,
       lastPolled: new Date(0),
       isPolling: false,
     }
@@ -556,6 +760,43 @@ export class GuildContextManager {
       }
     }
 
+    // Load game contexts
+    await this.loadGameContextsFromDatabase()
+
     console.log(`[Context] Loaded ${this.guildContexts.size} guild(s) from database`)
+  }
+
+  private async loadGameContextsFromDatabase(): Promise<void> {
+    try {
+      const gameContexts = await prisma.channelGameContext.findMany()
+
+      for (const gc of gameContexts) {
+        let context = this.guildContexts.get(gc.guildId)
+        if (!context) {
+          context = this.createEmptyContext(gc.guildId, 'Unknown')
+          this.guildContexts.set(gc.guildId, context)
+        }
+
+        const gameContext: ChannelGameContext = {
+          channelId: gc.channelId,
+          guildId: gc.guildId,
+          activeSystem: gc.activeSystem as GameSystem | null,
+          systemConfidence: gc.systemConfidence,
+          systemSource: gc.systemSource as GameSystemSource,
+          campaignId: gc.campaignId,
+          campaignSetting: gc.campaignSetting,
+          recentTopics: gc.recentTopics as string[],
+          lastActivity: gc.lastActivity,
+          lastSystemChange: gc.lastSystemChange,
+        }
+
+        context.gameContextIndex.set(gc.channelId, gameContext)
+      }
+
+      console.log(`[Context] Loaded ${gameContexts.length} game context(s)`)
+    } catch (error) {
+      // Table might not exist yet if migration hasn't run
+      console.log('[Context] Game context table not ready, skipping load')
+    }
   }
 }

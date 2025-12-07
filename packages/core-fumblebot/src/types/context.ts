@@ -234,3 +234,204 @@ export const DEFAULT_CONTEXT_CONFIG: ContextManagerConfig = {
   summarizeAfterMessages: 100,
   enableAutoPolling: true,
 };
+
+// =============================================================================
+// Game System Types
+// =============================================================================
+
+/**
+ * Supported TTRPG game systems
+ * These are used for context-aware lookups and rules assistance
+ */
+export type GameSystem =
+  | '5e'        // D&D 5th Edition
+  | 'pf2e'      // Pathfinder 2nd Edition
+  | 'pf1e'      // Pathfinder 1st Edition
+  | 'cypher'    // Cypher System (Numenera, The Strange)
+  | 'bitd'      // Blades in the Dark
+  | 'swn'       // Stars Without Number
+  | 'mothership' // Mothership
+  | 'coc'       // Call of Cthulhu
+  | 'fate'      // FATE Core
+  | 'pbta'      // Powered by the Apocalypse
+  | 'savage'    // Savage Worlds
+  | 'dcc'       // Dungeon Crawl Classics
+  | 'osr'       // Old School Renaissance
+  | 'other';    // Generic/Other system
+
+/**
+ * How the game system was determined
+ */
+export type GameSystemSource = 'explicit' | 'inferred' | 'default';
+
+/**
+ * Per-channel game context for system detection and tracking
+ */
+export interface ChannelGameContext {
+  /** Discord channel ID */
+  channelId: string;
+  /** Discord guild ID */
+  guildId: string;
+  /** Currently active game system */
+  activeSystem: GameSystem | null;
+  /** Confidence in the detected system (0-1) */
+  systemConfidence: number;
+  /** How the system was determined */
+  systemSource: GameSystemSource;
+  /** Associated campaign ID (optional) */
+  campaignId: string | null;
+  /** Campaign setting name (e.g., "Forgotten Realms") */
+  campaignSetting: string | null;
+  /** Recent conversation topics */
+  recentTopics: string[];
+  /** Last activity timestamp */
+  lastActivity: Date;
+  /** Last system change timestamp */
+  lastSystemChange: Date | null;
+}
+
+/**
+ * Game system detection result
+ */
+export interface GameSystemDetectionResult {
+  /** Detected system (null if none detected) */
+  system: GameSystem | null;
+  /** Detection confidence (0-1) */
+  confidence: number;
+  /** Reason for detection */
+  reason: string;
+  /** Whether this was an explicit declaration */
+  isExplicit: boolean;
+}
+
+/**
+ * Map of game system IDs to display names
+ */
+export const GAME_SYSTEM_NAMES: Record<GameSystem, string> = {
+  '5e': 'D&D 5th Edition',
+  'pf2e': 'Pathfinder 2nd Edition',
+  'pf1e': 'Pathfinder 1st Edition',
+  'cypher': 'Cypher System',
+  'bitd': 'Blades in the Dark',
+  'swn': 'Stars Without Number',
+  'mothership': 'Mothership',
+  'coc': 'Call of Cthulhu',
+  'fate': 'Fate Core',
+  'pbta': 'Powered by the Apocalypse',
+  'savage': 'Savage Worlds',
+  'dcc': 'Dungeon Crawl Classics',
+  'osr': 'Old School Renaissance',
+  'other': 'Other System',
+};
+
+// =============================================================================
+// AI Thinking/Reasoning Types
+// =============================================================================
+
+/**
+ * Types of internal AI reasoning
+ */
+export type ThoughtType =
+  | 'question'    // Internal question the AI is asking
+  | 'reasoning'   // Chain of thought reasoning
+  | 'lookup'      // Searching for information
+  | 'decision'    // Making a choice
+  | 'summary'     // Summarizing findings
+  | 'filter'      // Filtering irrelevant results
+  | 'context';    // Loading/interpreting context
+
+/**
+ * AI thought/reasoning entry
+ */
+export interface AIThought {
+  /** Unique thought ID */
+  id: string;
+  /** Session ID grouping related thoughts */
+  sessionId: string;
+  /** Type of thought */
+  type: ThoughtType;
+  /** Thought content */
+  content: string;
+  /** Parent thought ID (for chains) */
+  parentId?: string;
+  /** Sequence number within session */
+  sequence: number;
+  /** Associated context */
+  context: {
+    guildId?: string;
+    channelId?: string;
+    userId?: string;
+  };
+  /** Additional metadata */
+  options?: {
+    query?: string;
+    sources?: string[];
+    result?: string;
+    model?: string;
+    tokensUsed?: number;
+    durationMs?: number;
+    confidence?: number;
+  };
+  /** When thought was created */
+  createdAt: Date;
+}
+
+// =============================================================================
+// Lookup Agent Types
+// =============================================================================
+
+/**
+ * Types of lookups the agent can perform
+ */
+export type LookupType =
+  | 'spell'
+  | 'monster'
+  | 'item'
+  | 'rules'
+  | 'lore'
+  | 'class'
+  | 'race'
+  | 'feat'
+  | 'condition'
+  | 'general';
+
+/**
+ * Source types for lookups
+ */
+export type LookupSourceType = 'kb' | 'web' | 'database' | 'cache';
+
+/**
+ * Lookup request
+ */
+export interface LookupRequest {
+  /** Search query */
+  query: string;
+  /** Type of lookup */
+  lookupType: LookupType;
+  /** Current game context */
+  gameContext: Partial<ChannelGameContext>;
+  /** Max results to return */
+  maxResults?: number;
+}
+
+/**
+ * Individual lookup result
+ */
+export interface LookupResult {
+  /** Whether something was found */
+  found: boolean;
+  /** 3-4 sentence summary */
+  summary: string;
+  /** Link to full content */
+  sourceUrl: string | null;
+  /** Source type */
+  sourceType: LookupSourceType;
+  /** Source name (e.g., "5e.tools", "Knowledge Base") */
+  sourceName: string;
+  /** Result confidence (0-1) */
+  confidence: number;
+  /** Game system of the result */
+  gameSystem: GameSystem | null;
+  /** Relevance score (0-1) */
+  relevanceScore: number;
+}
