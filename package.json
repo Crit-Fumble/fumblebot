@@ -34,7 +34,7 @@
     "test:watch": "vitest --watch",
     "test:coverage": "vitest --coverage",
     "test:ui": "vitest --ui",
-    "test:unit": "vitest --run tests/unit packages/core-fumblebot/tests src/services/discord/voice/listener.test.ts",
+    "test:unit": "vitest --run tests/unit packages/core-fumblebot/tests src/services/ai src/services/context src/services/discord/voice src/services/discord/handlers",
     "test:integration": "vitest --run src/integration",
     "test:integration:watch": "vitest --watch src/integration",
     "test:e2e": "playwright test",
