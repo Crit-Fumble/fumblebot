@@ -20,7 +20,7 @@ model Guild {
   guildId     String   @unique
   name        String?
   isHome      Boolean  @default(false) // true = FUMBLEBOT_DISCORD_GUILD_ID (admin access)
-  settings    Json     @default("{}")
+  settings    Json     @default("{}") // DEPRECATED: Migrating to Core Admin API + GuildAIConfig
   installedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -30,6 +30,42 @@ model Guild {
   commands         BotCommand[]
   promptPartials   PromptPartial[]
   channelKBSources ChannelKBSource[]
+  aiConfig         GuildAIConfig?
+}
+
+// AI-specific guild configuration (stays in FumbleBot)
+// General guild config (prefix, timezone, etc.) is now in Core Admin API
+model GuildAIConfig {
+  id      String @id @default(cuid())
+  guildId String @unique
+
+  // AI Model Configuration
+  primaryModel   String  @default("claude-sonnet-4-20250514") // Main reasoning model
+  lookupModel    String  @default("claude-haiku-4-20250514")  // Quick lookup model
+  thinkingModel  String  @default("claude-sonnet-4-20250514") // Thinking/analysis model
+  temperature    Float   @default(0.7)
+  maxTokens      Int     @default(2000)
+
+  // AI Feature Toggles
+  enableThinking    Boolean @default(true)  // Show AI thinking process
+  enableLookup      Boolean @default(true)  // Enable knowledge base lookups
+  enableContext     Boolean @default(true)  // Use conversation context
+  enableMemory      Boolean @default(true)  // Remember user interactions
+
+  // Context Configuration
+  maxContextMessages Int @default(20)       // Max messages to include in context
+  contextWindowHours Int @default(24)       // Look back this many hours for context
+
+  // Custom AI Settings (extensible JSON)
+  customSettings Json @default("{}")
+
+  // Audit
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([guildId])
 }
 
 model GuildMember {
