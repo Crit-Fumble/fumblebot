@@ -139,6 +139,38 @@ model Session {
 }
 
 // ===========================================
+// Character Management (Roleplay System)
+// NOTE: This is a temporary local implementation.
+// Will migrate to Core Character API when available.
+// ===========================================
+
+// User-created characters for roleplay
+model Character {
+  id        String   @id @default(cuid())
+  userId    String   // Discord user ID
+  guildId   String
+
+  // Character identity
+  name      String
+
+  // Character token/avatar (Discord CDN URL or attachment)
+  tokenUrl  String?
+
+  // Active channel tracking (null = not currently active)
+  activeChannelId String?
+  activeThreadId  String?
+
+  // Audit
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, guildId, name])
+  @@index([userId, guildId])
+  @@index([userId, guildId, activeChannelId])
+  @@map("characters")
+}
+
+// ===========================================
 // NOTE: Campaign-related models have been moved to Core:
 // - FumbleCampaign → Campaign
 // - FumbleCharacter → Character

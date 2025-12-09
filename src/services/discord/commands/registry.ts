@@ -15,6 +15,8 @@ import type { CommandHandler } from './types.js'
 import { diceCommands, diceHandler } from './slash/dice.js'
 import { voiceCommands, voiceHandler } from './slash/voice.js'
 import { settingsCommands, settingsHandler } from './slash/settings.js'
+import { characterCommands, characterHandler } from './slash/character.js'
+import { icCommands, icHandler } from './slash/ic.js'
 
 export class CommandRegistry {
   private slashCommands: Map<string, SlashCommandBuilder | SlashCommandOptionsOnlyBuilder | SlashCommandSubcommandsOnlyBuilder> = new Map()
@@ -29,6 +31,8 @@ export class CommandRegistry {
     this.registerSlashCommands(diceCommands, diceHandler)
     this.registerSlashCommands(voiceCommands, voiceHandler)
     this.registerSlashCommands(settingsCommands, settingsHandler)
+    this.registerSlashCommands(characterCommands, characterHandler)
+    this.registerSlashCommands(icCommands, icHandler)
   }
 
   private registerSlashCommands(

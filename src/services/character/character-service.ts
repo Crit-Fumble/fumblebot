@@ -1,33 +1,32 @@
 /**
  * Character Service
+ * Manages user-created characters for roleplay
  *
- * High-level service for character management that integrates:
- * - Core API (source of truth for character data)
- * - Active character cache (ephemeral Discord state)
- * - Campaign association
- *
- * This service is FumbleBot's interface to Core's character system.
+ * NOTE: This is a temporary local implementation.
+ * Will migrate to Core Character API when available.
  */
 
-import { CoreApiClient } from '@crit-fumble/core/client';
-import type { Character, Campaign } from '@crit-fumble/core/types/campaign';
-import type { CharacterServiceOptions } from './types.js';
-import characterCache from './character-cache.js';
+import { getPrisma } from '../db/client.js';
+import type { Character } from '@prisma/fumblebot';
 
-/**
- * Character service
- *
- * Provides high-level character operations for Discord commands.
- * Delegates persistence to Core API, uses cache for active character state.
- */
-class CharacterService {
+export interface CreateCharacterData {
+  name: string;
+  tokenUrl?: string;
+}
+
+export interface UpdateCharacterData {
+  name?: string;
+  tokenUrl?: string | null;
+}
+
+export interface CharacterWithActiveStatus extends Character {
+  isActive: boolean;
+}
+
+export class CharacterService {
   private static instance: CharacterService;
-  private coreApi!: CoreApiClient;
-  private initialized = false;
 
-  private constructor() {
-    // Singleton - use getInstance()
-  }
+  private constructor() {}
 
   static getInstance(): CharacterService {
     if (!CharacterService.instance) {
@@ -37,250 +36,300 @@ class CharacterService {
   }
 
   /**
-   * Initialize the service with Core API credentials
-   */
-  initialize(options: CharacterServiceOptions): void {
-    if (this.initialized) {
-      console.warn('[CharacterService] Already initialized, skipping');
-      return;
-    }
-
-    this.coreApi = new CoreApiClient({
-      baseUrl: options.coreApiUrl,
-      serviceSecret: options.coreSecret,
-    });
-
-    this.initialized = true;
-    console.log('[CharacterService] Initialized with Core API');
-  }
-
-  /**
-   * Ensure service is initialized
-   */
-  private ensureInitialized(): void {
-    if (!this.initialized) {
-      throw new Error('CharacterService not initialized. Call initialize() first.');
-    }
-  }
-
-  /**
-   * Get or create a campaign for a guild
-   *
-   * For now, we use one campaign per guild. In the future, we may support
-   * multiple campaigns per guild with /campaign select.
-   */
-  async getOrCreateGuildCampaign(guildId: string, guildName: string): Promise<Campaign> {
-    this.ensureInitialized();
-
-    // Try to find existing campaign for guild
-    const { campaigns } = await this.coreApi.campaigns.list({
-      guildId,
-      limit: 1,
-    });
-
-    if (campaigns.length > 0) {
-      return campaigns[0];
-    }
-
-    // Create default campaign for guild
-    const { campaign } = await this.coreApi.campaigns.create({
-      guildId,
-      name: `${guildName} Campaign`,
-      description: 'Default campaign for Discord server',
-      createdBy: 'fumblebot',
-    });
-
-    console.log(`[CharacterService] Created campaign ${campaign.id} for guild ${guildId}`);
-    return campaign;
-  }
-
-  /**
-   * List all characters in a campaign
-   */
-  async listCharacters(campaignId: string): Promise<Character[]> {
-    this.ensureInitialized();
-
-    const { characters } = await this.coreApi.characters.list(campaignId);
-    return characters;
-  }
-
-  /**
-   * List characters owned by a specific user
-   */
-  async listUserCharacters(campaignId: string, ownerId: string): Promise<Character[]> {
-    this.ensureInitialized();
-
-    const allCharacters = await this.listCharacters(campaignId);
-    return allCharacters.filter((char) => char.ownerId === ownerId);
-  }
-
-  /**
-   * Get a specific character
-   */
-  async getCharacter(campaignId: string, characterId: string): Promise<Character | null> {
-    this.ensureInitialized();
-
-    try {
-      const { character } = await this.coreApi.characters.get(campaignId, characterId);
-      return character;
-    } catch (error) {
-      // 404 = character not found
-      if (error instanceof Error && 'status' in error && (error as {status: number}).status === 404) {
-        return null;
-      }
-      throw error;
-    }
-  }
-
-  /**
    * Create a new character
    */
-  async createCharacter(
-    campaignId: string,
-    data: {
-      name: string;
-      type?: 'pc' | 'npc' | 'familiar' | 'companion' | 'monster';
-      avatarUrl?: string;
-      ownerId: string;
-      sheetData?: Record<string, unknown>;
-    }
+  async create(
+    userId: string,
+    guildId: string,
+    data: CreateCharacterData
   ): Promise<Character> {
-    this.ensureInitialized();
+    const prisma = getPrisma();
 
-    const { character } = await this.coreApi.characters.create(campaignId, {
-      name: data.name,
-      type: data.type || 'pc',
-      avatarUrl: data.avatarUrl || null,
-      ownerId: data.ownerId,
-      sheetData: data.sheetData || {},
+    // Check if character name already exists for this user in this guild
+    const existing = await prisma.character.findFirst({
+      where: {
+        userId,
+        guildId,
+        name: data.name,
+      },
     });
 
-    console.log(`[CharacterService] Created character ${character.id}: ${character.name}`);
-    return character;
+    if (existing) {
+      throw new Error(`You already have a character named "${data.name}" in this server`);
+    }
+
+    return prisma.character.create({
+      data: {
+        userId,
+        guildId,
+        name: data.name,
+        tokenUrl: data.tokenUrl,
+      },
+    });
+  }
+
+  /**
+   * Get a character by ID
+   */
+  async getById(characterId: string, userId: string, guildId: string): Promise<Character | null> {
+    const prisma = getPrisma();
+    return prisma.character.findFirst({
+      where: {
+        id: characterId,
+        userId,
+        guildId,
+      },
+    });
+  }
+
+  /**
+   * Get all characters for a user in a guild
+   */
+  async list(userId: string, guildId: string): Promise<Character[]> {
+    const prisma = getPrisma();
+    return prisma.character.findMany({
+      where: {
+        userId,
+        guildId,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+  }
+
+  /**
+   * Get all characters for a user in a guild with active status
+   */
+  async listWithActiveStatus(
+    userId: string,
+    guildId: string,
+    channelId?: string,
+    threadId?: string
+  ): Promise<CharacterWithActiveStatus[]> {
+    const characters = await this.list(userId, guildId);
+
+    return characters.map(char => ({
+      ...char,
+      isActive: this.isCharacterActive(char, channelId, threadId),
+    }));
   }
 
   /**
    * Update a character
    */
-  async updateCharacter(
-    campaignId: string,
+  async update(
     characterId: string,
-    updates: {
-      name?: string;
-      avatarUrl?: string;
-      type?: 'pc' | 'npc' | 'familiar' | 'companion' | 'monster';
-      sheetData?: Record<string, unknown>;
-      isActive?: boolean;
-      isRetired?: boolean;
-    }
+    userId: string,
+    guildId: string,
+    data: UpdateCharacterData
   ): Promise<Character> {
-    this.ensureInitialized();
+    const prisma = getPrisma();
 
-    const { character } = await this.coreApi.characters.update(campaignId, characterId, updates);
+    // Verify ownership
+    const existing = await this.getById(characterId, userId, guildId);
+    if (!existing) {
+      throw new Error('Character not found or you do not have permission to edit it');
+    }
 
-    // Invalidate cache entries for this character
-    characterCache.clearCampaign(campaignId);
+    // If changing name, check for conflicts
+    if (data.name && data.name !== existing.name) {
+      const conflict = await prisma.character.findFirst({
+        where: {
+          userId,
+          guildId,
+          name: data.name,
+          id: { not: characterId },
+        },
+      });
 
-    console.log(`[CharacterService] Updated character ${characterId}`);
-    return character;
+      if (conflict) {
+        throw new Error(`You already have a character named "${data.name}" in this server`);
+      }
+    }
+
+    return prisma.character.update({
+      where: { id: characterId },
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.tokenUrl !== undefined && { tokenUrl: data.tokenUrl }),
+      },
+    });
   }
 
   /**
    * Delete a character
    */
-  async deleteCharacter(campaignId: string, characterId: string): Promise<void> {
-    this.ensureInitialized();
-
-    await this.coreApi.characters.delete(campaignId, characterId);
-
-    // Clear from cache
-    characterCache.clearCampaign(campaignId);
-
-    console.log(`[CharacterService] Deleted character ${characterId}`);
-  }
-
-  /**
-   * Set active character for user in channel
-   */
-  async setActiveCharacter(
-    userId: string,
-    channelId: string,
-    campaignId: string,
-    characterId: string
-  ): Promise<Character> {
-    this.ensureInitialized();
-
-    // Fetch character from Core
-    const character = await this.getCharacter(campaignId, characterId);
-
-    if (!character) {
-      throw new Error(`Character ${characterId} not found in campaign ${campaignId}`);
-    }
+  async delete(characterId: string, userId: string, guildId: string): Promise<void> {
+    const prisma = getPrisma();
 
     // Verify ownership
-    if (character.ownerId !== userId) {
-      throw new Error(`Character ${characterId} is owned by ${character.ownerId}, not ${userId}`);
+    const existing = await this.getById(characterId, userId, guildId);
+    if (!existing) {
+      throw new Error('Character not found or you do not have permission to delete it');
     }
 
-    // Cache as active
-    characterCache.set({
-      userId,
-      channelId,
-      campaignId,
-      characterId,
-      character,
+    await prisma.character.delete({
+      where: { id: characterId },
+    });
+  }
+
+  /**
+   * Set a character as active in a channel/thread
+   */
+  async setActive(
+    characterId: string,
+    userId: string,
+    guildId: string,
+    channelId: string,
+    threadId?: string
+  ): Promise<Character> {
+    const prisma = getPrisma();
+
+    // Verify ownership
+    const existing = await this.getById(characterId, userId, guildId);
+    if (!existing) {
+      throw new Error('Character not found or you do not have permission to use it');
+    }
+
+    // Deactivate any other characters this user has active in this channel/thread
+    await prisma.character.updateMany({
+      where: {
+        userId,
+        guildId,
+        activeChannelId: channelId,
+        activeThreadId: threadId || null,
+        id: { not: characterId },
+      },
+      data: {
+        activeChannelId: null,
+        activeThreadId: null,
+      },
     });
 
-    console.log(`[CharacterService] Set active character for ${userId} in ${channelId}: ${character.name}`);
-    return character;
+    // Activate this character
+    return prisma.character.update({
+      where: { id: characterId },
+      data: {
+        activeChannelId: channelId,
+        activeThreadId: threadId || null,
+      },
+    });
   }
 
   /**
-   * Get active character for user in channel
-   *
-   * Returns null if no active character or if it has expired.
+   * Get the active character for a user in a channel/thread
    */
-  getActiveCharacter(userId: string, channelId: string): Character | null {
-    const entry = characterCache.get({ userId, channelId });
-    return entry ? entry.character : null;
-  }
-
-  /**
-   * Get active character entry (includes campaign ID)
-   */
-  getActiveCharacterEntry(
+  async getActive(
     userId: string,
-    channelId: string
-  ): { campaignId: string; character: Character } | null {
-    const entry = characterCache.get({ userId, channelId });
-    return entry
-      ? {
-          campaignId: entry.campaignId,
-          character: entry.character,
-        }
-      : null;
+    guildId: string,
+    channelId: string,
+    threadId?: string
+  ): Promise<Character | null> {
+    const prisma = getPrisma();
+
+    return prisma.character.findFirst({
+      where: {
+        userId,
+        guildId,
+        activeChannelId: channelId,
+        activeThreadId: threadId || null,
+      },
+    });
   }
 
   /**
-   * Clear active character for user in channel
+   * Deactivate a character in its current channel
    */
-  clearActiveCharacter(userId: string, channelId: string): void {
-    characterCache.clear({ userId, channelId });
+  async deactivate(characterId: string, userId: string, guildId: string): Promise<Character> {
+    const prisma = getPrisma();
+
+    // Verify ownership
+    const existing = await this.getById(characterId, userId, guildId);
+    if (!existing) {
+      throw new Error('Character not found or you do not have permission to modify it');
+    }
+
+    return prisma.character.update({
+      where: { id: characterId },
+      data: {
+        activeChannelId: null,
+        activeThreadId: null,
+      },
+    });
   }
 
   /**
-   * Get cache statistics
+   * Deactivate all characters for a user in a channel
    */
-  getCacheStats() {
-    return characterCache.getStats();
+  async deactivateAll(
+    userId: string,
+    guildId: string,
+    channelId: string,
+    threadId?: string
+  ): Promise<void> {
+    const prisma = getPrisma();
+
+    await prisma.character.updateMany({
+      where: {
+        userId,
+        guildId,
+        activeChannelId: channelId,
+        activeThreadId: threadId || null,
+      },
+      data: {
+        activeChannelId: null,
+        activeThreadId: null,
+      },
+    });
   }
 
   /**
-   * Cleanup expired cache entries
+   * Check if a character is active in the given context
    */
-  cleanupCache(): number {
-    return characterCache.cleanup();
+  private isCharacterActive(
+    character: Character,
+    channelId?: string,
+    threadId?: string
+  ): boolean {
+    if (!channelId) {
+      // No context provided, character is active if it has any active channel
+      return !!character.activeChannelId;
+    }
+
+    // Check if active in the specified channel/thread
+    return (
+      character.activeChannelId === channelId &&
+      (threadId ? character.activeThreadId === threadId : !character.activeThreadId)
+    );
+  }
+
+  /**
+   * Search characters by name
+   */
+  async search(
+    userId: string,
+    guildId: string,
+    query: string
+  ): Promise<Character[]> {
+    const prisma = getPrisma();
+
+    return prisma.character.findMany({
+      where: {
+        userId,
+        guildId,
+        name: {
+          contains: query,
+          mode: 'insensitive',
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+      take: 25, // Limit for autocomplete
+    });
   }
 }
 
+// Export singleton instance
 export default CharacterService.getInstance();

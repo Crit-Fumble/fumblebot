@@ -6,7 +6,7 @@
  * but served by Core at /api/kb/* endpoints
  */
 
-interface SearchOptions {
+export interface SearchOptions {
   query: string;
   system?: string;
   category?: string;
@@ -14,7 +14,7 @@ interface SearchOptions {
   similarityThreshold?: number;
 }
 
-interface SearchResult {
+export interface SearchResult {
   id: string;
   title: string;
   system: string;
@@ -24,14 +24,14 @@ interface SearchResult {
   metadata: Record<string, unknown>;
 }
 
-interface SearchResponse {
+export interface SearchResponse {
   query: string;
   results: SearchResult[];
   total: number;
   took: number;
 }
 
-interface Document {
+export interface Document {
   id: string;
   title: string;
   system: string;
@@ -44,11 +44,35 @@ interface Document {
   lastModified: string;
 }
 
-interface VersionInfo {
+export interface VersionInfo {
   version: string;
   lastUpdated: string;
   totalDocuments: number;
   systems: string[];
+}
+
+export interface IngestDocument {
+  id: string;
+  title: string;
+  content: string;
+  system?: string;
+  category?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface IngestRequest {
+  sourceType: 'discord' | 'world-anvil' | 'web' | 'custom';
+  sourceId: string;
+  sourceName: string;
+  guildId?: string;
+  documents: IngestDocument[];
+}
+
+export interface IngestResponse {
+  success: boolean;
+  sourceId: string;
+  documentsIndexed: number;
+  errors?: string[];
 }
 
 export class KnowledgeBaseClient {
@@ -152,6 +176,30 @@ export class KnowledgeBaseClient {
       `/api/kb/systems/${systemId}/monsters`
     );
     return response.monsters;
+  }
+
+  /**
+   * Ingest documents into the knowledge base
+   * Used for syncing Discord channels, World Anvil content, etc.
+   */
+  async ingestDocuments(request: IngestRequest): Promise<IngestResponse> {
+    return this.request<IngestResponse>('/api/kb/ingest', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  /**
+   * Delete documents from a specific source
+   * Used when removing a KB source
+   */
+  async deleteSource(sourceId: string): Promise<{ success: boolean; deletedCount: number }> {
+    return this.request<{ success: boolean; deletedCount: number }>(
+      `/api/kb/sources/${sourceId}`,
+      {
+        method: 'DELETE',
+      }
+    );
   }
 
   /**

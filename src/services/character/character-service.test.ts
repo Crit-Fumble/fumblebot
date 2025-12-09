@@ -1,506 +1,298 @@
 /**
  * Character Service Tests
  *
- * Tests for the character service that wraps Core API.
+ * Tests for the Prisma-based character service.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { Character, Campaign } from '@crit-fumble/core/types/campaign';
-import CharacterService from './character-service.js';
-import characterCache from './character-cache.js';
 
-// Mock Core API methods
-const { mockCoreApi } = vi.hoisted(() => ({
-  mockCoreApi: {
-    campaigns: {
-      list: vi.fn(),
-      create: vi.fn(),
-    },
-    characters: {
-      list: vi.fn(),
-      get: vi.fn(),
+// Mock Prisma client
+const { mockPrisma } = vi.hoisted(() => ({
+  mockPrisma: {
+    character: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       delete: vi.fn(),
     },
   },
 }));
 
-// Mock Core API Client
-vi.mock('@crit-fumble/core/client', () => ({
-  CoreApiClient: vi.fn().mockImplementation(function () {
-    return mockCoreApi;
-  }),
+vi.mock('../db/client.js', () => ({
+  getPrisma: () => mockPrisma,
 }));
 
+import { CharacterService } from './character-service.js';
+
 describe('CharacterService', () => {
-  const mockCampaign: Campaign = {
-    id: 'camp_123',
+  const mockCharacter = {
+    id: 'char_123',
+    userId: 'user_789',
     guildId: 'guild_456',
-    name: 'Test Campaign',
-    description: 'Test campaign description',
-    status: 'active',
-    foundrySystemId: null,
-    systemTitle: null,
-    worldAnvilWorldId: null,
-    worldAnvilWorldName: null,
-    worldAnvilWorldUrl: null,
-    worldAnvilNotebookId: null,
-    members: {},
-    roleMappings: {},
-    containerId: null,
-    containerPort: null,
-    containerStatus: 'stopped',
-    lastActiveAt: null,
-    createdBy: 'test',
+    name: 'Gandalf',
+    tokenUrl: 'https://example.com/gandalf.png',
+    activeChannelId: null,
+    activeThreadId: null,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
   };
 
-  const mockCharacter: Character = {
-    id: 'char_123',
-    campaignId: 'camp_123',
-    name: 'Gandalf',
-    type: 'pc',
-    avatarUrl: 'https://example.com/gandalf.png',
-    ownerId: 'user_789',
-    foundryActorId: null,
-    lastSyncedAt: null,
-    sheetData: {},
-    isActive: true,
-    isRetired: false,
-    createdAt: new Date('2024-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  };
+  let service: CharacterService;
 
   beforeEach(() => {
-    // Reset all mocks
     vi.clearAllMocks();
-
-    // Clear cache
-    characterCache.clearAll();
-
-    // Initialize service
-    CharacterService.initialize({
-      coreApiUrl: 'https://core.test',
-      coreSecret: 'test-secret',
-    });
+    service = CharacterService.getInstance();
   });
 
-  describe('initialization', () => {
-    it('should initialize with Core API credentials', () => {
-      // Service is already initialized in beforeEach
-      expect(CharacterService).toBeDefined();
-    });
+  describe('create', () => {
+    it('should create a new character', async () => {
+      mockPrisma.character.findFirst.mockResolvedValue(null);
+      mockPrisma.character.create.mockResolvedValue(mockCharacter);
 
-    it('should throw error if used before initialization', () => {
-      // Create a new instance to test uninitialized state
-      const uninitializedService = Object.create(CharacterService);
-      // @ts-expect-error - Testing private method
-      uninitializedService.initialized = false;
-
-      expect(() => {
-        // @ts-expect-error - Testing private method
-        uninitializedService.ensureInitialized();
-      }).toThrow('CharacterService not initialized');
-    });
-  });
-
-  describe('getOrCreateGuildCampaign', () => {
-    it('should return existing campaign if found', async () => {
-      mockCoreApi.campaigns.list.mockResolvedValue({
-        campaigns: [mockCampaign],
-        total: 1,
-        limit: 1,
-        offset: 0,
+      const result = await service.create('user_789', 'guild_456', {
+        name: 'Gandalf',
+        tokenUrl: 'https://example.com/gandalf.png',
       });
-
-      const campaign = await CharacterService.getOrCreateGuildCampaign(
-        'guild_456',
-        'Test Guild'
-      );
-
-      expect(campaign).toEqual(mockCampaign);
-      expect(mockCoreApi.campaigns.list).toHaveBeenCalledWith({
-        guildId: 'guild_456',
-        limit: 1,
-      });
-      expect(mockCoreApi.campaigns.create).not.toHaveBeenCalled();
-    });
-
-    it('should create new campaign if none exists', async () => {
-      mockCoreApi.campaigns.list.mockResolvedValue({
-        campaigns: [],
-        total: 0,
-        limit: 1,
-        offset: 0,
-      });
-
-      mockCoreApi.campaigns.create.mockResolvedValue({
-        campaign: mockCampaign,
-      });
-
-      const campaign = await CharacterService.getOrCreateGuildCampaign(
-        'guild_456',
-        'Test Guild'
-      );
-
-      expect(campaign).toEqual(mockCampaign);
-      expect(mockCoreApi.campaigns.create).toHaveBeenCalledWith({
-        guildId: 'guild_456',
-        name: 'Test Guild Campaign',
-        description: 'Default campaign for Discord server',
-        createdBy: 'fumblebot',
-      });
-    });
-  });
-
-  describe('listCharacters', () => {
-    it('should list all characters in campaign', async () => {
-      const characters = [mockCharacter, { ...mockCharacter, id: 'char_456' }];
-
-      mockCoreApi.characters.list.mockResolvedValue({
-        characters,
-        total: 2,
-      });
-
-      const result = await CharacterService.listCharacters('camp_123');
-
-      expect(result).toEqual(characters);
-      expect(mockCoreApi.characters.list).toHaveBeenCalledWith('camp_123');
-    });
-  });
-
-  describe('listUserCharacters', () => {
-    it('should filter characters by owner', async () => {
-      const char1 = { ...mockCharacter, id: 'char_1', ownerId: 'user_123' };
-      const char2 = { ...mockCharacter, id: 'char_2', ownerId: 'user_456' };
-      const char3 = { ...mockCharacter, id: 'char_3', ownerId: 'user_123' };
-
-      mockCoreApi.characters.list.mockResolvedValue({
-        characters: [char1, char2, char3],
-        total: 3,
-      });
-
-      const result = await CharacterService.listUserCharacters('camp_123', 'user_123');
-
-      expect(result).toHaveLength(2);
-      expect(result.map((c) => c.id)).toEqual(['char_1', 'char_3']);
-    });
-  });
-
-  describe('getCharacter', () => {
-    it('should get character by ID', async () => {
-      mockCoreApi.characters.get.mockResolvedValue({
-        character: mockCharacter,
-      });
-
-      const result = await CharacterService.getCharacter('camp_123', 'char_123');
 
       expect(result).toEqual(mockCharacter);
-      expect(mockCoreApi.characters.get).toHaveBeenCalledWith('camp_123', 'char_123');
+      expect(mockPrisma.character.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'user_789',
+          guildId: 'guild_456',
+          name: 'Gandalf',
+          tokenUrl: 'https://example.com/gandalf.png',
+        },
+      });
     });
 
-    it('should return null for 404 errors', async () => {
-      const error = new Error('Not found');
-      // @ts-expect-error - Adding status property
-      error.status = 404;
+    it('should throw error if character name already exists', async () => {
+      mockPrisma.character.findFirst.mockResolvedValue(mockCharacter);
 
-      mockCoreApi.characters.get.mockRejectedValue(error);
+      await expect(
+        service.create('user_789', 'guild_456', { name: 'Gandalf' })
+      ).rejects.toThrow('You already have a character named "Gandalf" in this server');
+    });
+  });
 
-      const result = await CharacterService.getCharacter('camp_123', 'nonexistent');
+  describe('getById', () => {
+    it('should return character by ID', async () => {
+      mockPrisma.character.findFirst.mockResolvedValue(mockCharacter);
+
+      const result = await service.getById('char_123', 'user_789', 'guild_456');
+
+      expect(result).toEqual(mockCharacter);
+      expect(mockPrisma.character.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 'char_123',
+          userId: 'user_789',
+          guildId: 'guild_456',
+        },
+      });
+    });
+
+    it('should return null if character not found', async () => {
+      mockPrisma.character.findFirst.mockResolvedValue(null);
+
+      const result = await service.getById('nonexistent', 'user_789', 'guild_456');
 
       expect(result).toBeNull();
     });
-
-    it('should throw for other errors', async () => {
-      const error = new Error('Server error');
-      // @ts-expect-error - Adding status property
-      error.status = 500;
-
-      mockCoreApi.characters.get.mockRejectedValue(error);
-
-      await expect(
-        CharacterService.getCharacter('camp_123', 'char_123')
-      ).rejects.toThrow('Server error');
-    });
   });
 
-  describe('createCharacter', () => {
-    it('should create character with minimal data', async () => {
-      mockCoreApi.characters.create.mockResolvedValue({
-        character: mockCharacter,
-      });
+  describe('list', () => {
+    it('should list all characters for user in guild', async () => {
+      const characters = [mockCharacter, { ...mockCharacter, id: 'char_456', name: 'Frodo' }];
+      mockPrisma.character.findMany.mockResolvedValue(characters);
 
-      const result = await CharacterService.createCharacter('camp_123', {
-        name: 'Gandalf',
-        ownerId: 'user_789',
-      });
+      const result = await service.list('user_789', 'guild_456');
 
-      expect(result).toEqual(mockCharacter);
-      expect(mockCoreApi.characters.create).toHaveBeenCalledWith('camp_123', {
-        name: 'Gandalf',
-        type: 'pc',
-        avatarUrl: null,
-        ownerId: 'user_789',
-        sheetData: {},
-      });
-    });
-
-    it('should create character with full data', async () => {
-      mockCoreApi.characters.create.mockResolvedValue({
-        character: mockCharacter,
-      });
-
-      const result = await CharacterService.createCharacter('camp_123', {
-        name: 'Gandalf',
-        type: 'npc',
-        avatarUrl: 'https://example.com/avatar.png',
-        ownerId: 'user_789',
-        sheetData: { level: 20 },
-      });
-
-      expect(result).toEqual(mockCharacter);
-      expect(mockCoreApi.characters.create).toHaveBeenCalledWith('camp_123', {
-        name: 'Gandalf',
-        type: 'npc',
-        avatarUrl: 'https://example.com/avatar.png',
-        ownerId: 'user_789',
-        sheetData: { level: 20 },
+      expect(result).toEqual(characters);
+      expect(mockPrisma.character.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user_789',
+          guildId: 'guild_456',
+        },
+        orderBy: {
+          name: 'asc',
+        },
       });
     });
   });
 
-  describe('updateCharacter', () => {
+  describe('listWithActiveStatus', () => {
+    it('should return characters with active status', async () => {
+      const activeChar = { ...mockCharacter, activeChannelId: 'channel_1' };
+      const inactiveChar = { ...mockCharacter, id: 'char_2', name: 'Frodo' };
+      mockPrisma.character.findMany.mockResolvedValue([activeChar, inactiveChar]);
+
+      const result = await service.listWithActiveStatus('user_789', 'guild_456', 'channel_1');
+
+      expect(result).toHaveLength(2);
+      expect(result[0].isActive).toBe(true);
+      expect(result[1].isActive).toBe(false);
+    });
+  });
+
+  describe('update', () => {
     it('should update character', async () => {
-      const updatedCharacter = { ...mockCharacter, name: 'Gandalf the Grey' };
+      const updatedChar = { ...mockCharacter, name: 'Gandalf the Grey' };
+      mockPrisma.character.findFirst
+        .mockResolvedValueOnce(mockCharacter) // getById
+        .mockResolvedValueOnce(null); // conflict check
+      mockPrisma.character.update.mockResolvedValue(updatedChar);
 
-      mockCoreApi.characters.update.mockResolvedValue({
-        character: updatedCharacter,
-      });
-
-      const result = await CharacterService.updateCharacter('camp_123', 'char_123', {
+      const result = await service.update('char_123', 'user_789', 'guild_456', {
         name: 'Gandalf the Grey',
       });
 
-      expect(result).toEqual(updatedCharacter);
-      expect(mockCoreApi.characters.update).toHaveBeenCalledWith(
-        'camp_123',
-        'char_123',
-        { name: 'Gandalf the Grey' }
-      );
+      expect(result).toEqual(updatedChar);
     });
 
-    it('should clear cache for campaign after update', async () => {
-      mockCoreApi.characters.update.mockResolvedValue({
-        character: mockCharacter,
-      });
+    it('should throw error if character not found', async () => {
+      mockPrisma.character.findFirst.mockResolvedValue(null);
 
-      // Set cache entry
-      characterCache.set({
-        userId: 'user_123',
-        channelId: 'channel_456',
-        campaignId: 'camp_123',
-        characterId: 'char_123',
-        character: mockCharacter,
-      });
+      await expect(
+        service.update('nonexistent', 'user_789', 'guild_456', { name: 'New Name' })
+      ).rejects.toThrow('Character not found or you do not have permission to edit it');
+    });
 
-      await CharacterService.updateCharacter('camp_123', 'char_123', {
-        name: 'Updated',
-      });
+    it('should throw error if new name conflicts', async () => {
+      mockPrisma.character.findFirst
+        .mockResolvedValueOnce(mockCharacter) // getById
+        .mockResolvedValueOnce({ ...mockCharacter, id: 'other_char' }); // conflict
 
-      // Cache should be cleared
-      const cached = characterCache.get({
-        userId: 'user_123',
-        channelId: 'channel_456',
-      });
-
-      expect(cached).toBeNull();
+      await expect(
+        service.update('char_123', 'user_789', 'guild_456', { name: 'Existing Name' })
+      ).rejects.toThrow('You already have a character named "Existing Name" in this server');
     });
   });
 
-  describe('deleteCharacter', () => {
+  describe('delete', () => {
     it('should delete character', async () => {
-      mockCoreApi.characters.delete.mockResolvedValue({
-        success: true,
-        deletedId: 'char_123',
+      mockPrisma.character.findFirst.mockResolvedValue(mockCharacter);
+      mockPrisma.character.delete.mockResolvedValue(mockCharacter);
+
+      await service.delete('char_123', 'user_789', 'guild_456');
+
+      expect(mockPrisma.character.delete).toHaveBeenCalledWith({
+        where: { id: 'char_123' },
       });
-
-      await CharacterService.deleteCharacter('camp_123', 'char_123');
-
-      expect(mockCoreApi.characters.delete).toHaveBeenCalledWith('camp_123', 'char_123');
     });
 
-    it('should clear cache for campaign after delete', async () => {
-      mockCoreApi.characters.delete.mockResolvedValue({
-        success: true,
-        deletedId: 'char_123',
-      });
+    it('should throw error if character not found', async () => {
+      mockPrisma.character.findFirst.mockResolvedValue(null);
 
-      // Set cache entry
-      characterCache.set({
-        userId: 'user_123',
-        channelId: 'channel_456',
-        campaignId: 'camp_123',
-        characterId: 'char_123',
-        character: mockCharacter,
-      });
-
-      await CharacterService.deleteCharacter('camp_123', 'char_123');
-
-      // Cache should be cleared
-      const cached = characterCache.get({
-        userId: 'user_123',
-        channelId: 'channel_456',
-      });
-
-      expect(cached).toBeNull();
+      await expect(
+        service.delete('nonexistent', 'user_789', 'guild_456')
+      ).rejects.toThrow('Character not found or you do not have permission to delete it');
     });
   });
 
-  describe('setActiveCharacter', () => {
-    it('should set active character and cache it', async () => {
-      mockCoreApi.characters.get.mockResolvedValue({
-        character: mockCharacter,
+  describe('setActive', () => {
+    it('should set character as active', async () => {
+      const activeChar = { ...mockCharacter, activeChannelId: 'channel_1' };
+      mockPrisma.character.findFirst.mockResolvedValue(mockCharacter);
+      mockPrisma.character.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.character.update.mockResolvedValue(activeChar);
+
+      const result = await service.setActive('char_123', 'user_789', 'guild_456', 'channel_1');
+
+      expect(result.activeChannelId).toBe('channel_1');
+      expect(mockPrisma.character.updateMany).toHaveBeenCalled();
+      expect(mockPrisma.character.update).toHaveBeenCalledWith({
+        where: { id: 'char_123' },
+        data: {
+          activeChannelId: 'channel_1',
+          activeThreadId: null,
+        },
       });
-
-      const result = await CharacterService.setActiveCharacter(
-        'user_789',
-        'channel_456',
-        'camp_123',
-        'char_123'
-      );
-
-      expect(result).toEqual(mockCharacter);
-
-      const cached = characterCache.get({
-        userId: 'user_789',
-        channelId: 'channel_456',
-      });
-
-      expect(cached?.characterId).toBe('char_123');
-      expect(cached?.character).toEqual(mockCharacter);
     });
 
-    it('should throw if character not found', async () => {
-      mockCoreApi.characters.get.mockResolvedValue({
-        character: null,
-      });
+    it('should throw error if character not found', async () => {
+      mockPrisma.character.findFirst.mockResolvedValue(null);
 
       await expect(
-        CharacterService.setActiveCharacter(
-          'user_789',
-          'channel_456',
-          'camp_123',
-          'nonexistent'
-        )
-      ).rejects.toThrow('Character nonexistent not found');
-    });
-
-    it('should throw if user is not owner', async () => {
-      mockCoreApi.characters.get.mockResolvedValue({
-        character: mockCharacter,
-      });
-
-      await expect(
-        CharacterService.setActiveCharacter(
-          'wrong_user',
-          'channel_456',
-          'camp_123',
-          'char_123'
-        )
-      ).rejects.toThrow('Character char_123 is owned by user_789, not wrong_user');
+        service.setActive('nonexistent', 'user_789', 'guild_456', 'channel_1')
+      ).rejects.toThrow('Character not found or you do not have permission to use it');
     });
   });
 
-  describe('getActiveCharacter', () => {
-    it('should get active character from cache', () => {
-      characterCache.set({
-        userId: 'user_123',
-        channelId: 'channel_456',
-        campaignId: 'camp_123',
-        characterId: 'char_123',
-        character: mockCharacter,
-      });
+  describe('getActive', () => {
+    it('should return active character', async () => {
+      const activeChar = { ...mockCharacter, activeChannelId: 'channel_1' };
+      mockPrisma.character.findFirst.mockResolvedValue(activeChar);
 
-      const result = CharacterService.getActiveCharacter('user_123', 'channel_456');
+      const result = await service.getActive('user_789', 'guild_456', 'channel_1');
 
-      expect(result).toEqual(mockCharacter);
+      expect(result).toEqual(activeChar);
     });
 
-    it('should return null if no active character', () => {
-      const result = CharacterService.getActiveCharacter('user_123', 'channel_456');
+    it('should return null if no active character', async () => {
+      mockPrisma.character.findFirst.mockResolvedValue(null);
+
+      const result = await service.getActive('user_789', 'guild_456', 'channel_1');
 
       expect(result).toBeNull();
     });
   });
 
-  describe('getActiveCharacterEntry', () => {
-    it('should get active character entry with campaign ID', () => {
-      characterCache.set({
-        userId: 'user_123',
-        channelId: 'channel_456',
-        campaignId: 'camp_123',
-        characterId: 'char_123',
-        character: mockCharacter,
-      });
+  describe('deactivate', () => {
+    it('should deactivate character', async () => {
+      const deactivatedChar = { ...mockCharacter, activeChannelId: null };
+      mockPrisma.character.findFirst.mockResolvedValue(mockCharacter);
+      mockPrisma.character.update.mockResolvedValue(deactivatedChar);
 
-      const result = CharacterService.getActiveCharacterEntry('user_123', 'channel_456');
+      const result = await service.deactivate('char_123', 'user_789', 'guild_456');
 
-      expect(result).toEqual({
-        campaignId: 'camp_123',
-        character: mockCharacter,
-      });
-    });
-
-    it('should return null if no active character', () => {
-      const result = CharacterService.getActiveCharacterEntry('user_123', 'channel_456');
-
-      expect(result).toBeNull();
+      expect(result.activeChannelId).toBeNull();
     });
   });
 
-  describe('clearActiveCharacter', () => {
-    it('should clear active character from cache', () => {
-      characterCache.set({
-        userId: 'user_123',
-        channelId: 'channel_456',
-        campaignId: 'camp_123',
-        characterId: 'char_123',
-        character: mockCharacter,
+  describe('deactivateAll', () => {
+    it('should deactivate all characters in channel', async () => {
+      mockPrisma.character.updateMany.mockResolvedValue({ count: 2 });
+
+      await service.deactivateAll('user_789', 'guild_456', 'channel_1');
+
+      expect(mockPrisma.character.updateMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user_789',
+          guildId: 'guild_456',
+          activeChannelId: 'channel_1',
+          activeThreadId: null,
+        },
+        data: {
+          activeChannelId: null,
+          activeThreadId: null,
+        },
       });
-
-      CharacterService.clearActiveCharacter('user_123', 'channel_456');
-
-      const cached = characterCache.get({
-        userId: 'user_123',
-        channelId: 'channel_456',
-      });
-
-      expect(cached).toBeNull();
     });
   });
 
-  describe('cache statistics', () => {
-    it('should get cache stats', () => {
-      characterCache.set({
-        userId: 'user_123',
-        channelId: 'channel_456',
-        campaignId: 'camp_123',
-        characterId: 'char_123',
-        character: mockCharacter,
+  describe('search', () => {
+    it('should search characters by name', async () => {
+      const characters = [mockCharacter];
+      mockPrisma.character.findMany.mockResolvedValue(characters);
+
+      const result = await service.search('user_789', 'guild_456', 'Gand');
+
+      expect(result).toEqual(characters);
+      expect(mockPrisma.character.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user_789',
+          guildId: 'guild_456',
+          name: {
+            contains: 'Gand',
+            mode: 'insensitive',
+          },
+        },
+        orderBy: {
+          name: 'asc',
+        },
+        take: 25,
       });
-
-      const stats = CharacterService.getCacheStats();
-
-      expect(stats.total).toBe(1);
-      expect(stats.active).toBe(1);
-    });
-
-    it('should cleanup cache', () => {
-      const removed = CharacterService.cleanupCache();
-
-      expect(typeof removed).toBe('number');
     });
   });
 });
