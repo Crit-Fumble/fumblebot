@@ -541,6 +541,68 @@ export function setupActivityProxy(app: Application): void {
 }
 
 /**
+ * Setup Discord Activity auth proxy
+ *
+ * Proxies Discord Activity SDK authentication endpoints to Core:
+ * - /.proxy/api/config -> /api/config (GET Discord Client ID)
+ * - /.proxy/api/config/token -> /api/config/token (POST token exchange)
+ * - /.proxy/api/activity/auth -> /api/activity/auth (POST activity auth)
+ */
+export function setupActivityAuthProxy(app: Application): void {
+  const coreConfig = getAppCoreProxyConfig();
+
+  if (!coreConfig) {
+    console.log('[Middleware] Activity auth proxy disabled (CORE_SERVER_URL not set)');
+    return;
+  }
+
+  const coreUrl = `${coreConfig.url}:${coreConfig.port}`;
+  const { isProduction } = getServerConfig();
+  const debug = !isProduction;
+
+  console.log(`[Middleware] Setting up activity auth proxy /.proxy/api/* -> ${coreUrl}/api/*`);
+
+  const authProxy = createProxyMiddleware({
+    target: coreUrl,
+    changeOrigin: true,
+    // Remove /.proxy prefix: /.proxy/api/config -> /api/config
+    pathRewrite: {
+      '^/.proxy': '',
+    },
+    logger: debug ? console : undefined,
+    on: {
+      proxyReq: (proxyReq, req) => {
+        if (debug) {
+          const targetPath = req.url?.replace('/.proxy', '') || '';
+          console.log(`[ActivityAuthProxy] ${req.method} ${req.url} -> ${coreUrl}${targetPath}`);
+        }
+        // Forward original host
+        proxyReq.setHeader('X-Forwarded-Host', req.headers.host || '');
+        proxyReq.setHeader('X-Forwarded-Proto', 'https');
+      },
+      proxyRes: (proxyRes, req) => {
+        if (debug) {
+          console.log(`[ActivityAuthProxy] Response: ${proxyRes.statusCode} ${req.url}`);
+        }
+      },
+      error: (err, req, res) => {
+        console.error(`[ActivityAuthProxy] Error:`, err.message);
+        if (res && 'status' in res) {
+          (res as Response).status(502).json({
+            error: 'Auth server unavailable',
+            message: 'Failed to reach Core auth server',
+          });
+        }
+      },
+    },
+  });
+
+  // Proxy specific auth endpoints
+  app.use('/.proxy/api/config', authProxy);
+  app.use('/.proxy/api/activity/auth', authProxy);
+}
+
+/**
  * Setup all middleware
  */
 export function setupAllMiddleware(app: Application): void {
@@ -560,4 +622,8 @@ export function setupAllMiddleware(app: Application): void {
   // Setup activity proxy for Discord Activity (/.proxy/activity/*)
   // This proxies the React activity UI from Core
   setupActivityProxy(app);
+
+  // Setup activity auth proxy (/.proxy/api/config, /.proxy/api/activity/auth)
+  // This proxies Discord Activity SDK auth endpoints to Core
+  setupActivityAuthProxy(app);
 }
