@@ -16,6 +16,9 @@ import {
 import type { FumbleBotClient } from '../client.js'
 import { getUserSettings, disconnectWorldAnvil as disconnectWA } from '../settings/index.js'
 import { getWorldAnvilService } from '../../worldanvil/index.js'
+import characterService from '../../character/character-service.js'
+import webhookService from '../webhook-service.js'
+import type { TextChannel, ThreadChannel } from 'discord.js'
 
 // Voice options for settings
 const VOICES = [
@@ -78,6 +81,10 @@ export async function handleButton(
 
       case 'roll':
         await handleRollButton(interaction, parts.slice(1))
+        break
+
+      case 'ic':
+        await handleICButton(interaction, parts.slice(1))
         break
 
       default:
@@ -598,6 +605,104 @@ async function handleDisconnectWorldAnvil(
     console.error('[Settings] Failed to disconnect World Anvil:', error)
     await interaction.reply({
       content: '❌ Failed to disconnect World Anvil. Please try again.',
+      ephemeral: true,
+    })
+  }
+}
+
+/**
+ * Handle In-Character movement button
+ * Format: ic_move:characterId:direction
+ */
+async function handleICButton(
+  interaction: ButtonInteraction,
+  params: string[]
+): Promise<void> {
+  // Parse the remaining customId parts
+  // params[0] will be 'move:char-1:n', so we need to split by ':'
+  const fullParams = params[0]?.split(':') || []
+  const [subAction, characterId, direction] = fullParams
+
+  if (subAction !== 'move') {
+    await interaction.reply({
+      content: '❌ Unknown IC action.',
+      ephemeral: true,
+    })
+    return
+  }
+
+  if (!interaction.guildId || !interaction.channel) {
+    await interaction.reply({
+      content: '❌ This command can only be used in a server channel.',
+      ephemeral: true,
+    })
+    return
+  }
+
+  const userId = interaction.user.id
+  const guildId = interaction.guildId
+  const channel = interaction.channel
+  const channelId = channel.id
+  const threadId = channel.isThread() ? channel.id : undefined
+
+  try {
+    // Verify character ownership
+    const character = await characterService.getById(characterId, userId, guildId)
+
+    if (!character) {
+      await interaction.reply({
+        content: '❌ Character not found or you do not have permission to move it.',
+        ephemeral: true,
+      })
+      return
+    }
+
+    // Map direction to readable text
+    const directionMap: Record<string, string> = {
+      nw: 'northwest ↖️',
+      n: 'north ⬆️',
+      ne: 'northeast ↗️',
+      w: 'west ⬅️',
+      stop: 'stopped 🛑',
+      e: 'east ➡️',
+      sw: 'southwest ↙️',
+      s: 'south ⬇️',
+      se: 'southeast ↘️',
+    }
+
+    const directionText = directionMap[direction] || direction
+
+    // For stop, just send a message
+    if (direction === 'stop') {
+      await webhookService.sendAsCharacter(
+        channel as TextChannel | ThreadChannel,
+        character,
+        `*stops moving* 🛑`
+      )
+
+      await interaction.reply({
+        content: `✅ ${character.name} stopped.`,
+        ephemeral: true,
+      })
+      return
+    }
+
+    // Send movement message as character
+    await webhookService.sendAsCharacter(
+      channel as TextChannel | ThreadChannel,
+      character,
+      `*moves ${directionText}*`
+    )
+
+    // Acknowledge the movement
+    await interaction.reply({
+      content: `✅ ${character.name} moves ${directionText}`,
+      ephemeral: true,
+    })
+  } catch (error: any) {
+    console.error('[IC Move] Error:', error)
+    await interaction.reply({
+      content: `❌ Error: ${error.message || 'Failed to move character'}`,
       ephemeral: true,
     })
   }

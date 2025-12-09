@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { getPrisma } from '../services/db/client.js';
 import { getFumbleBotClient } from '../services/discord/index.js';
 import { DiscordChannelReader } from '../services/discord/channel-reader.js';
+import { getKnowledgeBaseClient, isKnowledgeBaseConfigured } from '../lib/knowledge-base-client.js';
 
 /**
  * Valid channel types for KB sources
@@ -254,7 +255,17 @@ export async function handleDeleteChannelKBSource(req: Request, res: Response): 
       where: { id },
     });
 
-    // TODO: Also delete from Core KB when implemented
+    // Delete from Core KB if configured
+    if (isKnowledgeBaseConfigured()) {
+      try {
+        const kbClient = getKnowledgeBaseClient();
+        await kbClient.deleteSource(id);
+        console.log(`[ChannelKB] Deleted source ${id} from Core KB`);
+      } catch (kbError) {
+        console.error('[ChannelKB] Failed to delete from Core KB:', kbError);
+        // Don't fail the request if KB deletion fails
+      }
+    }
 
     res.json({ deleted: true, id });
   } catch (error) {
@@ -336,8 +347,42 @@ export async function handleSyncChannelKBSource(req: Request, res: Response): Pr
     // Format for KB
     const documents = reader.formatForKB(content, source.name, source.category);
 
-    // TODO: Send to Core KB for indexing
-    // For now, just update the sync status
+    // Send to Core KB for indexing if configured
+    let kbStatus: 'success' | 'partial' | 'error' = 'success';
+    let kbError: string | null = null;
+
+    if (isKnowledgeBaseConfigured() && documents.length > 0) {
+      try {
+        const kbClient = getKnowledgeBaseClient();
+        const ingestResult = await kbClient.ingestDocuments({
+          sourceType: 'discord',
+          sourceId: id,
+          sourceName: source.name,
+          guildId,
+          documents: documents.map(d => ({
+            id: d.id,
+            title: d.title,
+            content: d.content,
+            system: d.system || undefined,
+            category: d.category,
+            metadata: d.metadata,
+          })),
+        });
+
+        if (!ingestResult.success || ingestResult.errors?.length) {
+          kbStatus = 'partial';
+          kbError = ingestResult.errors?.join('; ') || 'Some documents failed to index';
+        }
+
+        console.log(
+          `[ChannelKB] Indexed ${ingestResult.documentsIndexed}/${documents.length} documents to Core KB`
+        );
+      } catch (kbIngestionError: any) {
+        console.error('[ChannelKB] Failed to ingest to Core KB:', kbIngestionError);
+        kbStatus = 'error';
+        kbError = kbIngestionError.message || 'Failed to ingest documents';
+      }
+    }
 
     // Update sync status
     await prisma.channelKBSource.update({
@@ -345,8 +390,8 @@ export async function handleSyncChannelKBSource(req: Request, res: Response): Pr
       data: {
         channelName: content.channelName, // Update cached name
         lastSyncAt: new Date(),
-        lastSyncStatus: 'success',
-        lastSyncError: null,
+        lastSyncStatus: kbStatus,
+        lastSyncError: kbError,
       },
     });
 
@@ -356,6 +401,9 @@ export async function handleSyncChannelKBSource(req: Request, res: Response): Pr
       messageCount: content.messages.length,
       threadCount: content.threads.length,
       documentCount: documents.length,
+      kbIndexed: kbStatus === 'success',
+      kbStatus,
+      kbError,
       documents: documents.map(d => ({
         id: d.id,
         title: d.title,

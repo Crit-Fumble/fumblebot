@@ -6,6 +6,7 @@
 import { getPrisma } from '../db/client.js';
 import { getFumbleBotClient } from './index.js';
 import { DiscordChannelReader, type KBDocument } from './channel-reader.js';
+import { getKnowledgeBaseClient, isKnowledgeBaseConfigured } from '../../lib/knowledge-base-client.js';
 
 export interface SyncResult {
   sourceId: string;
@@ -243,12 +244,45 @@ export class ChannelKBSyncService {
       // Format for KB
       const documents = reader.formatForKB(content, source.name, source.category);
 
-      // TODO: Send to Core KB for indexing
-      // For now, log what would be sent
-      if (documents.length > 0) {
+      // Send to Core KB for indexing if configured
+      let kbStatus: 'success' | 'partial' | 'error' = 'success';
+      let kbError: string | null = null;
+
+      if (isKnowledgeBaseConfigured() && documents.length > 0) {
+        try {
+          const kbClient = getKnowledgeBaseClient();
+          const ingestResult = await kbClient.ingestDocuments({
+            sourceType: 'discord',
+            sourceId: source.id,
+            sourceName: source.name,
+            guildId: source.guildId,
+            documents: documents.map(d => ({
+              id: d.id,
+              title: d.title,
+              content: d.content,
+              system: d.system || undefined,
+              category: d.category,
+              metadata: d.metadata,
+            })),
+          });
+
+          if (!ingestResult.success || ingestResult.errors?.length) {
+            kbStatus = 'partial';
+            kbError = ingestResult.errors?.join('; ') || 'Some documents failed to index';
+          }
+
+          console.log(
+            `[ChannelKBSync] ${source.name}: Indexed ${ingestResult.documentsIndexed}/${documents.length} documents to Core KB`
+          );
+        } catch (kbIngestionError: any) {
+          console.error(`[ChannelKBSync] Failed to ingest ${source.name} to Core KB:`, kbIngestionError);
+          kbStatus = 'error';
+          kbError = kbIngestionError.message || 'Failed to ingest documents';
+        }
+      } else if (documents.length > 0) {
         console.log(
           `[ChannelKBSync] ${source.name}: ${documents.length} documents, ` +
-          `${content.messages.length} messages, ${content.threads.length} threads`
+          `${content.messages.length} messages, ${content.threads.length} threads (KB not configured)`
         );
       }
 
@@ -258,8 +292,8 @@ export class ChannelKBSyncService {
         data: {
           channelName: content.channelName,
           lastSyncAt: syncedAt,
-          lastSyncStatus: 'success',
-          lastSyncError: null,
+          lastSyncStatus: kbStatus,
+          lastSyncError: kbError,
         },
       });
 

@@ -1,3 +1,4 @@
+#!/bin/bash
 # Security scan before pushing
 # Blocks push to main/master if secrets are detected
 
