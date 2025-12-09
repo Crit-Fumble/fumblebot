@@ -7,7 +7,8 @@
  */
 
 import { getCoreClient } from '../../lib/core-client.js'
-import type { GuildAIConfig } from '.prisma/fumblebot'
+import { prisma } from '../db/client.js'
+import type { GuildAIConfig, Prisma } from '.prisma/fumblebot'
 
 // ===========================================
 // Types
@@ -131,7 +132,6 @@ export async function getGuildGeneralConfig(guildId: string): Promise<GuildGener
  */
 export async function getGuildAIConfig(guildId: string): Promise<GuildAISettings> {
   try {
-    const prisma = getPrisma() // TODO: this is deprecated, update code
     const aiConfig = await prisma.guildAIConfig.findUnique({
       where: { guildId },
     })
@@ -190,8 +190,6 @@ export async function updateGuildAIConfig(
   guildId: string,
   updates: Partial<GuildAISettings>
 ): Promise<GuildAISettings> {
-  const prisma = getPrisma() // TODO: this is deprecated, update code
-
   // Prepare update data
   const updateData: Partial<GuildAIConfig> = {}
   if (updates.primaryModel !== undefined) updateData.primaryModel = updates.primaryModel
@@ -205,7 +203,7 @@ export async function updateGuildAIConfig(
   if (updates.enableMemory !== undefined) updateData.enableMemory = updates.enableMemory
   if (updates.maxContextMessages !== undefined) updateData.maxContextMessages = updates.maxContextMessages
   if (updates.contextWindowHours !== undefined) updateData.contextWindowHours = updates.contextWindowHours
-  if (updates.customSettings !== undefined) updateData.customSettings = updates.customSettings as JsonValue  // TODO: figure out what is going on here
+  if (updates.customSettings !== undefined) updateData.customSettings = updates.customSettings as Prisma.JsonValue
 
   const aiConfig = await prisma.guildAIConfig.upsert({
     where: { guildId },

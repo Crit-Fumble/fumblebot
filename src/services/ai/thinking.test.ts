@@ -3,23 +3,31 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import {
-  ThinkingSession,
-  startThinking,
-  formatThoughts,
-  type Thought,
-  type ThoughtType,
-} from './thinking.js'
+// Create hoisted mock functions for prisma
+const { mockCreate, mockFindMany } = vi.hoisted(() => ({
+  mockCreate: vi.fn().mockResolvedValue({}),
+  mockFindMany: vi.fn().mockResolvedValue([]),
+}))
 
 // Mock prisma to avoid database calls
 vi.mock('../db/client.js', () => ({
   prisma: {
     aIThought: {
-      create: vi.fn().mockResolvedValue({}),
-      findMany: vi.fn().mockResolvedValue([]),
+      create: mockCreate,
+      findMany: mockFindMany,
     },
   },
 }))
+
+import {
+  ThinkingSession,
+  startThinking,
+  formatThoughts,
+  getSessionThoughts,
+  getRecentChannelThoughts,
+  type Thought,
+  type ThoughtType,
+} from './thinking.js'
 
 describe('ThinkingSession', () => {
   let session: ThinkingSession
@@ -252,6 +260,266 @@ describe('startThinking', () => {
     const session = startThinking()
 
     expect(session).toBeInstanceOf(ThinkingSession)
+  })
+})
+
+describe('getSessionThoughts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns mapped thoughts from database', async () => {
+    const mockDbThoughts = [
+      {
+        id: 'thought-1',
+        sessionId: 'session-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        userId: 'user-1',
+        type: 'question',
+        content: 'What is this?',
+        parentId: null,
+        sequence: 0,
+        query: 'test query',
+        sources: ['source1', 'source2'],
+        result: 'test result',
+        model: 'gpt-4',
+        tokensUsed: 100,
+        durationMs: 500,
+        confidence: 0.9,
+        createdAt: new Date('2024-01-01'),
+      },
+      {
+        id: 'thought-2',
+        sessionId: 'session-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        userId: 'user-1',
+        type: 'reasoning',
+        content: 'Analysis complete',
+        parentId: 'thought-1',
+        sequence: 1,
+        query: null,
+        sources: [],
+        result: null,
+        model: null,
+        tokensUsed: null,
+        durationMs: null,
+        confidence: null,
+        createdAt: new Date('2024-01-02'),
+      },
+    ]
+
+    mockFindMany.mockResolvedValueOnce(mockDbThoughts)
+
+    const thoughts = await getSessionThoughts('session-1')
+
+    expect(mockFindMany).toHaveBeenCalledWith({
+      where: { sessionId: 'session-1' },
+      orderBy: { sequence: 'asc' },
+    })
+    expect(thoughts).toHaveLength(2)
+    expect(thoughts[0].id).toBe('thought-1')
+    expect(thoughts[0].type).toBe('question')
+    expect(thoughts[0].context.guildId).toBe('guild-1')
+    expect(thoughts[0].options?.query).toBe('test query')
+    expect(thoughts[0].options?.sources).toEqual(['source1', 'source2'])
+    expect(thoughts[0].options?.confidence).toBe(0.9)
+    expect(thoughts[1].parentId).toBe('thought-1')
+  })
+
+  it('returns empty array on database error', async () => {
+    mockFindMany.mockRejectedValueOnce(new Error('Database error'))
+
+    const thoughts = await getSessionThoughts('session-1')
+
+    expect(thoughts).toEqual([])
+  })
+
+  it('handles null values in database records', async () => {
+    const mockDbThought = {
+      id: 'thought-1',
+      sessionId: 'session-1',
+      guildId: null,
+      channelId: null,
+      userId: null,
+      type: 'question',
+      content: 'Test',
+      parentId: null,
+      sequence: 0,
+      query: null,
+      sources: [],
+      result: null,
+      model: null,
+      tokensUsed: null,
+      durationMs: null,
+      confidence: null,
+      createdAt: new Date(),
+    }
+
+    mockFindMany.mockResolvedValueOnce([mockDbThought])
+
+    const thoughts = await getSessionThoughts('session-1')
+
+    expect(thoughts[0].context.guildId).toBeUndefined()
+    expect(thoughts[0].context.channelId).toBeUndefined()
+    expect(thoughts[0].context.userId).toBeUndefined()
+    expect(thoughts[0].options?.query).toBeUndefined()
+    expect(thoughts[0].options?.result).toBeUndefined()
+  })
+})
+
+describe('getRecentChannelThoughts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns recent thoughts for a channel', async () => {
+    const mockDbThoughts = [
+      {
+        id: 'thought-2',
+        sessionId: 'session-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        userId: 'user-1',
+        type: 'reasoning',
+        content: 'Second thought',
+        parentId: 'thought-1',
+        sequence: 1,
+        query: null,
+        sources: [],
+        result: null,
+        model: null,
+        tokensUsed: null,
+        durationMs: null,
+        confidence: null,
+        createdAt: new Date('2024-01-02'),
+      },
+      {
+        id: 'thought-1',
+        sessionId: 'session-1',
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        userId: 'user-1',
+        type: 'question',
+        content: 'First thought',
+        parentId: null,
+        sequence: 0,
+        query: null,
+        sources: [],
+        result: null,
+        model: null,
+        tokensUsed: null,
+        durationMs: null,
+        confidence: null,
+        createdAt: new Date('2024-01-01'),
+      },
+    ]
+
+    mockFindMany.mockResolvedValueOnce(mockDbThoughts)
+
+    const thoughts = await getRecentChannelThoughts('guild-1', 'channel-1', 20)
+
+    expect(mockFindMany).toHaveBeenCalledWith({
+      where: { guildId: 'guild-1', channelId: 'channel-1' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    })
+    // Should be reversed to chronological order
+    expect(thoughts[0].id).toBe('thought-1')
+    expect(thoughts[1].id).toBe('thought-2')
+  })
+
+  it('uses default limit of 20', async () => {
+    mockFindMany.mockResolvedValueOnce([])
+
+    await getRecentChannelThoughts('guild-1', 'channel-1')
+
+    expect(mockFindMany).toHaveBeenCalledWith({
+      where: { guildId: 'guild-1', channelId: 'channel-1' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    })
+  })
+
+  it('returns empty array on database error', async () => {
+    mockFindMany.mockRejectedValueOnce(new Error('Database error'))
+
+    const thoughts = await getRecentChannelThoughts('guild-1', 'channel-1')
+
+    expect(thoughts).toEqual([])
+  })
+})
+
+describe('ThinkingSession persistence', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('persists thought to database', async () => {
+    const session = new ThinkingSession({ guildId: 'test-guild' })
+    const thought = await session.think('question', 'Test question')
+
+    // Wait for async persistence
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(mockCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: thought.id,
+        sessionId: session.sessionId,
+        guildId: 'test-guild',
+        type: 'question',
+        content: 'Test question',
+      }),
+    })
+  })
+
+  it('handles persistence errors gracefully with console.warn', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // Set up the mock to reject - this gets caught by the inner try-catch
+    mockCreate.mockReset()
+    mockCreate.mockRejectedValue(new Error('Database write failed'))
+
+    const session = new ThinkingSession()
+    await session.think('question', 'Test')
+
+    // Wait for async persistence error - use longer timeout
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[Thinking] Could not persist thought (table may not exist):',
+      expect.any(Error)
+    )
+
+    // Restore mocks
+    mockCreate.mockReset()
+    mockCreate.mockResolvedValue({})
+    consoleSpy.mockRestore()
+  })
+
+  it('handles synchronous errors in persistThought', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // Simulate Prisma error when table doesn't exist
+    mockCreate.mockReset()
+    mockCreate.mockImplementation(() => {
+      throw new Error('Table does not exist')
+    })
+
+    const session = new ThinkingSession()
+    await session.think('question', 'Test')
+
+    // Wait for async persistence
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[Thinking] Could not persist thought (table may not exist):',
+      expect.any(Error)
+    )
+
+    // Restore mocks
+    mockCreate.mockReset()
+    mockCreate.mockResolvedValue({})
+    consoleSpy.mockRestore()
   })
 })
 

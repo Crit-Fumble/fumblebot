@@ -563,5 +563,142 @@ describe('createTerminalCLI', () => {
   });
 });
 
-// Note: runTerminalREPL is not tested here as it requires interactive input/output
-// and process.stdin/stdout. It would require integration tests or mocking readline.
+describe('runTerminalREPL', () => {
+  // Import the function
+  let runTerminalREPL: typeof import('../src/cli/index.js').runTerminalREPL;
+
+  beforeEach(async () => {
+    const cli = await import('../src/cli/index.js');
+    runTerminalREPL = cli.runTerminalREPL;
+  });
+
+  it('should exit early when guildId is missing', async () => {
+    const mockFetch = createMockFetch(createMockResponse({}));
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      await runTerminalREPL({
+        baseUrl: 'https://api.fumblebot.test',
+        apiKey: 'test-key',
+        channelId: 'channel123', // Missing guildId
+        fetch: mockFetch,
+      });
+    } catch (e) {
+      // Expected - process.exit throws
+    }
+
+    expect(consoleSpy).toHaveBeenCalledWith('Error: guildId and channelId are required');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    exitSpy.mockRestore();
+    consoleSpy.mockRestore();
+  });
+
+  it('should exit early when channelId is missing', async () => {
+    const mockFetch = createMockFetch(createMockResponse({}));
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      await runTerminalREPL({
+        baseUrl: 'https://api.fumblebot.test',
+        apiKey: 'test-key',
+        guildId: 'guild123', // Missing channelId
+        fetch: mockFetch,
+      });
+    } catch (e) {
+      // Expected - process.exit throws
+    }
+
+    expect(consoleSpy).toHaveBeenCalledWith('Error: guildId and channelId are required');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    exitSpy.mockRestore();
+    consoleSpy.mockRestore();
+  });
+
+  it('should exit when connection fails', async () => {
+    const mockFetch = vi.fn().mockRejectedValue(new Error('Connection failed'));
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      await runTerminalREPL({
+        baseUrl: 'https://api.fumblebot.test',
+        apiKey: 'test-key',
+        guildId: 'guild123',
+        channelId: 'channel123',
+        fetch: mockFetch,
+      });
+    } catch (e) {
+      // Expected - process.exit throws
+    }
+
+    expect(consoleLogSpy).toHaveBeenCalledWith('Connecting to adventure terminal...');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to connect:'));
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    exitSpy.mockRestore();
+    consoleLogSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('should connect successfully and set up readline', async () => {
+    // Mock successful connection
+    const mockFetch = createMockFetch((url: string) => {
+      if (url.includes('/terminal/start')) {
+        return createMockResponse({
+          containerId: 'container123',
+          status: 'running',
+          port: 8080,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      if (url.includes('/terminal/stop')) {
+        return createMockResponse({ success: true });
+      }
+      return createMockResponse({});
+    });
+
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    // Mock readline module
+    const mockClose = vi.fn();
+    const mockQuestion = vi.fn((prompt: string, callback: (input: string) => void) => {
+      // Simulate user typing 'exit'
+      setTimeout(() => callback('exit'), 10);
+    });
+
+    vi.doMock('readline', () => ({
+      createInterface: vi.fn().mockReturnValue({
+        question: mockQuestion,
+        close: mockClose,
+      }),
+    }));
+
+    const promise = runTerminalREPL({
+      baseUrl: 'https://api.fumblebot.test',
+      apiKey: 'test-key',
+      guildId: 'guild123',
+      channelId: 'channel123',
+      fetch: mockFetch,
+    });
+
+    // Wait a bit for async operations
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(consoleLogSpy).toHaveBeenCalledWith('Connecting to adventure terminal...');
+    expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Connected to terminal'));
+
+    vi.doUnmock('readline');
+    consoleLogSpy.mockRestore();
+  });
+});
