@@ -5,6 +5,7 @@
 
 import type { AutocompleteInteraction } from 'discord.js'
 import type { FumbleBotClient } from '../client.js'
+import { eventAutocomplete } from '../commands/slash/event.js'
 
 /**
  * Handle autocomplete interactions
@@ -32,6 +33,10 @@ export async function handleAutocomplete(
       case 'npc':
       case 'lore':
         choices = getContentAutocomplete(focusedOption.name, focusedOption.value)
+        break
+
+      case 'event':
+        choices = await eventAutocomplete(interaction)
         break
 
       default:

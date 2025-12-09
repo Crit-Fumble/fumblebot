@@ -378,13 +378,21 @@ async function handleAIChat(
       }
     }
 
-    // Build context from recent messages
-    const recentMessages = await message.channel.messages.fetch({ limit: 5 })
-    const context = recentMessages
+    // Build context from recent messages (fetch more for better context)
+    const recentMessages = await message.channel.messages.fetch({ limit: 20 })
+    const contextMessages = recentMessages
       .reverse()
-      .filter((m) => !m.author.bot)
-      .map((m) => `${m.author.displayName}: ${m.content}`)
-      .join('\n')
+      .filter((m) => m.content.trim().length > 0) // Include bot messages for conversation flow
+      .slice(-15) // Keep last 15 after filtering
+      .map((m) => {
+        const author = m.author.bot ? `🤖 ${m.author.displayName}` : m.author.displayName;
+        return `[${author}]: ${m.content.substring(0, 500)}`;
+      })
+      .join('\n');
+
+    // Get channel/guild context for better responses
+    const channelName = 'name' in message.channel ? message.channel.name : 'DM';
+    const guildName = message.guild?.name || 'Direct Message';
 
     const response = await aiService.complete({
       messages: [
@@ -406,11 +414,13 @@ What you know:
 - You have a knowledge base with spells, classes, monsters, rules
 - You can search 5e.tools for anything you don't know off the top of your head
 
-Context:
-${context}
+Location: #${channelName} in ${guildName}
 
-Keep it brief. Don't pad responses.`,
-      maxTokens: 400,
+Recent conversation:
+${contextMessages}
+
+Keep it brief. Don't pad responses. Reference the conversation naturally if relevant.`,
+      maxTokens: 500,
       temperature: 0.7,
     })
 

@@ -30,6 +30,7 @@ import {
   FoundryContainerHandler,
   AIHandler,
   FumbleHandler,
+  AdventureHandler,
   ContainerHandler,
   KBHandler,
   WebHandler,
@@ -55,6 +56,8 @@ class FumbleBotMCPServer {
   private foundryContainerHandler: FoundryContainerHandler;
   private aiHandler: AIHandler;
   private fumbleHandler: FumbleHandler;
+  private adventureHandler: AdventureHandler;
+  /** @deprecated Use adventureHandler instead */
   private containerHandler: ContainerHandler;
   private kbHandler: KBHandler;
   private webHandler: WebHandler;
@@ -87,7 +90,8 @@ class FumbleBotMCPServer {
     this.foundryContainerHandler = new FoundryContainerHandler();
     this.aiHandler = new AIHandler(this.aiService);
     this.fumbleHandler = new FumbleHandler(this.aiService);
-    this.containerHandler = new ContainerHandler();
+    this.adventureHandler = new AdventureHandler();
+    this.containerHandler = new ContainerHandler(); // Deprecated
     this.kbHandler = new KBHandler();
     this.webHandler = new WebHandler();
     this.worldAnvilHandler = new WorldAnvilHandler();
@@ -151,7 +155,12 @@ class FumbleBotMCPServer {
       return await this.fumbleHandler.handle(name, args);
     }
 
-    // Container tools (adventure terminal environment)
+    // Adventure tools (MUD-style text adventures via Core API)
+    if (name.startsWith('adventure_')) {
+      return await this.adventureHandler.handle(name, args);
+    }
+
+    // Container tools (deprecated - use adventure_* instead)
     if (name.startsWith('container_')) {
       return await this.containerHandler.handle(name, args);
     }
@@ -192,7 +201,7 @@ class FumbleBotMCPServer {
     console.error('  - foundry_*_container : Foundry container management (create, list, stop)');
     console.error('  - anthropic_*         : Claude (Sonnet, Haiku) operations');
     console.error('  - openai_*            : OpenAI (GPT-4o, DALL-E) operations');
-    console.error('  - container_*         : Sandboxed terminal containers (via Core API)');
+    console.error('  - adventure_*         : MUD-style text adventures (via Core API)');
     console.error('  - fumble_*            : FumbleBot utilities (dice, NPC, lore)');
     console.error('  - kb_*                : Knowledge Base (TTRPG rules, FoundryVTT docs)');
     console.error('  - web_*               : Web fetch & search (5e.tools, D&D Beyond, Cypher, Fandom wikis)');

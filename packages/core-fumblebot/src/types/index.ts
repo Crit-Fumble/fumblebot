@@ -208,6 +208,157 @@ export interface AIGenerateImageResponse {
   revisedPrompt: string;
 }
 
+export type AIWriteStyle = 'creative' | 'professional' | 'casual' | 'academic' | 'fantasy';
+export type AIWriteLength = 'short' | 'medium' | 'long';
+
+export interface AIWriteRequest {
+  prompt: string;
+  style?: AIWriteStyle;
+  length?: AIWriteLength;
+}
+
+export interface AIWriteResponse {
+  content: string;
+  model: string;
+  style: AIWriteStyle;
+  length: AIWriteLength;
+}
+
+// =============================================================================
+// Timestamp Types
+// =============================================================================
+
+export interface TimestampFormat {
+  format: string;
+  name: string;
+  example: string;
+}
+
+export interface TimestampRequest {
+  input: string;
+  timezone?: string;
+}
+
+export interface TimestampResponse {
+  success: boolean;
+  input: string;
+  parsed: string;
+  unix: number;
+  formats: TimestampFormat[];
+  error?: string;
+}
+
+// =============================================================================
+// Event Types
+// =============================================================================
+
+export interface ScheduledEvent {
+  id: string;
+  guildId: string;
+  name: string;
+  description?: string;
+  scheduledStartAt: Date;
+  scheduledEndAt?: Date;
+  entityType: 'STAGE_INSTANCE' | 'VOICE' | 'EXTERNAL';
+  channelId?: string;
+  location?: string;
+  coverImageUrl?: string;
+  status: 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'CANCELED';
+  creatorId?: string;
+}
+
+export interface EventCloneRequest {
+  eventId: string;
+  guildId: string;
+  newDate: string;
+}
+
+export interface EventCloneResponse {
+  success: boolean;
+  originalEvent: ScheduledEvent;
+  newEvent: ScheduledEvent;
+  error?: string;
+}
+
+export interface EventListResponse {
+  events: ScheduledEvent[];
+  total: number;
+}
+
+// =============================================================================
+// Audio Playback Types
+// =============================================================================
+
+export interface AudioQueueItem {
+  url: string;
+  name: string;
+  requestedBy: string;
+  duration?: number;
+}
+
+export interface AudioPlayRequest {
+  guildId: string;
+  url: string;
+  name?: string;
+  requestedBy: string;
+}
+
+export interface AudioPlayResponse {
+  success: boolean;
+  position: number;
+  isPlaying: boolean;
+  name: string;
+}
+
+export interface AudioStatusResponse {
+  isPlaying: boolean;
+  isPaused: boolean;
+  currentItem: AudioQueueItem | null;
+  queueLength: number;
+  volume: number;
+}
+
+export interface AudioQueueResponse {
+  current: AudioQueueItem | null;
+  queue: AudioQueueItem[];
+}
+
+// =============================================================================
+// Character Types (Roleplay System)
+// =============================================================================
+
+export interface Character {
+  id: string;
+  userId: string;
+  guildId: string;
+  name: string;
+  tokenUrl?: string | null;
+  activeChannelId?: string | null;
+  activeThreadId?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CharacterCreateRequest {
+  userId: string;
+  guildId: string;
+  name: string;
+  tokenUrl?: string;
+}
+
+export interface CharacterUpdateRequest {
+  name?: string;
+  tokenUrl?: string | null;
+}
+
+export interface CharacterActivateRequest {
+  characterId: string;
+  userId: string;
+  guildId: string;
+  channelId: string;
+  threadId?: string;
+}
+
 // =============================================================================
 // Activity Types
 // =============================================================================

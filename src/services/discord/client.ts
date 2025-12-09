@@ -19,11 +19,13 @@ import { CommandRegistry } from './commands/registry.js'
 import { handleInteraction } from './handlers/interaction.js'
 import { handleMessage } from './handlers/message.js'
 import webhookService from './webhook-service.js'
+import { initializeEventManager, type EventManager } from './events/event-manager.js'
 
 export class FumbleBotClient {
   public client: Client
   public rest: REST
   public commandRegistry: CommandRegistry
+  public eventManager: EventManager | null = null
   private config: DiscordConfig
   private isReady = false
 
@@ -68,6 +70,11 @@ export class FumbleBotClient {
       // Initialize webhook service with client
       webhookService.initialize(this.client)
       console.log('[FumbleBot] Webhook service initialized')
+
+      // Initialize event manager for auto-start/auto-complete
+      this.eventManager = initializeEventManager(this.client)
+      this.eventManager.start()
+      console.log('[FumbleBot] Event manager initialized')
 
       // Set bot presence
       readyClient.user.setPresence({
@@ -142,6 +149,9 @@ export class FumbleBotClient {
    */
   async stop(): Promise<void> {
     console.log('[FumbleBot] Stopping bot...')
+    if (this.eventManager) {
+      this.eventManager.stop()
+    }
     this.client.destroy()
     this.isReady = false
   }

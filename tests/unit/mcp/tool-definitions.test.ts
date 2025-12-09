@@ -8,7 +8,7 @@ import {
   foundryTools,
   foundryContainerTools,
   aiTools,
-  containerTools,
+  adventureTools,
   fumbleTools,
   voiceTools,
   kbTools,
@@ -24,7 +24,7 @@ describe('MCP Tool Definitions', () => {
       { name: 'foundryTools', tools: foundryTools },
       { name: 'foundryContainerTools', tools: foundryContainerTools },
       { name: 'aiTools', tools: aiTools },
-      { name: 'containerTools', tools: containerTools },
+      { name: 'adventureTools', tools: adventureTools },
       { name: 'fumbleTools', tools: fumbleTools },
       { name: 'voiceTools', tools: voiceTools },
       { name: 'kbTools', tools: kbTools },
@@ -93,7 +93,7 @@ describe('MCP Tool Definitions', () => {
         foundryTools.length +
         foundryContainerTools.length +
         aiTools.length +
-        containerTools.length +
+        adventureTools.length +
         fumbleTools.length +
         voiceTools.length +
         kbTools.length +
@@ -271,9 +271,9 @@ describe('MCP Tool Definitions', () => {
       });
     });
 
-    it('container tools should start with container_', () => {
-      containerTools.forEach((tool) => {
-        expect(tool.name.startsWith('container_')).toBe(true);
+    it('adventure tools should start with adventure_', () => {
+      adventureTools.forEach((tool) => {
+        expect(tool.name.startsWith('adventure_')).toBe(true);
       });
     });
 

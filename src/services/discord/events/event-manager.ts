@@ -4,8 +4,8 @@
  * Automatically triggers actions when events start (e.g., start Foundry instances)
  */
 
-import type { Client, GuildScheduledEvent } from 'discord.js';
-import { GuildScheduledEventStatus } from 'discord.js';
+import type { Client, GuildScheduledEvent, VoiceState } from 'discord.js';
+import { GuildScheduledEventStatus, GuildScheduledEventEntityType } from 'discord.js';
 
 interface EventAction {
   eventId: string;
@@ -23,6 +23,9 @@ export class EventManager {
   private client: Client;
   private eventActions: Map<string, EventAction> = new Map();
   private checkInterval: NodeJS.Timeout | null = null;
+  private autoStartEnabled = true;
+  private autoCompleteEnabled = true;
+  private activeEventChannels: Map<string, string> = new Map(); // eventId -> channelId
 
   constructor(client: Client) {
     this.client = client;
@@ -46,6 +49,11 @@ export class EventManager {
       if (event && event.name) {
         await this.handleEventDelete(event as any);
       }
+    });
+
+    // Listen for voice state changes to auto-complete events
+    this.client.on('voiceStateUpdate', async (oldState, newState) => {
+      await this.handleVoiceStateUpdate(oldState, newState);
     });
 
     // Check for events starting soon every minute
@@ -141,30 +149,41 @@ export class EventManager {
   }
 
   /**
-   * Check for upcoming events that need preparation
+   * Check for upcoming events that need preparation or auto-start
    */
   private async checkUpcomingEvents() {
     const now = Date.now();
-    const upcomingWindow = 5 * 60 * 1000; // 5 minutes
+    const upcomingWindow = 5 * 60 * 1000; // 5 minutes for preparation
+    const autoStartWindow = 60 * 1000; // 60 seconds for auto-start
 
     for (const guild of this.client.guilds.cache.values()) {
       try {
         const events = await guild.scheduledEvents.fetch();
 
         for (const event of events.values()) {
-          // Only process scheduled events created by the bot
-          if (event.creatorId !== this.client.user?.id) {
-            continue;
-          }
-
           if (!event.scheduledStartAt) {
             continue;
           }
 
           const timeUntilStart = event.scheduledStartAt.getTime() - now;
 
-          // Event starting in the next 5 minutes
-          if (timeUntilStart > 0 && timeUntilStart <= upcomingWindow) {
+          // Auto-start events within 60 seconds of scheduled time
+          if (this.autoStartEnabled &&
+              event.status === GuildScheduledEventStatus.Scheduled &&
+              timeUntilStart <= autoStartWindow &&
+              timeUntilStart >= -autoStartWindow) { // Allow up to 60s late
+            console.log(`[Events] Auto-starting event: ${event.name}`);
+            await this.autoStartEvent(event);
+            continue;
+          }
+
+          // Only process bot-created events for preparation/actions
+          if (event.creatorId !== this.client.user?.id) {
+            continue;
+          }
+
+          // Event starting in the next 5 minutes - prepare
+          if (timeUntilStart > autoStartWindow && timeUntilStart <= upcomingWindow) {
             const action = this.getEventAction(event.id);
             if (action) {
               console.log(`[Events] Event ${event.name} starting in ${Math.round(timeUntilStart / 1000)}s`);
@@ -175,6 +194,75 @@ export class EventManager {
       } catch (error) {
         console.error(`[Events] Error checking events for guild ${guild.id}:`, error);
       }
+    }
+  }
+
+  /**
+   * Auto-start a scheduled event
+   */
+  private async autoStartEvent(event: GuildScheduledEvent) {
+    try {
+      await event.setStatus(GuildScheduledEventStatus.Active);
+      console.log(`[Events] Event auto-started: ${event.name} (${event.id})`);
+
+      // Track voice channel for auto-complete
+      if (event.entityType === GuildScheduledEventEntityType.Voice ||
+          event.entityType === GuildScheduledEventEntityType.StageInstance) {
+        if (event.channelId) {
+          this.activeEventChannels.set(event.id, event.channelId);
+        }
+      }
+    } catch (error) {
+      console.error(`[Events] Failed to auto-start event ${event.name}:`, error);
+    }
+  }
+
+  /**
+   * Handle voice state changes to auto-complete events
+   */
+  private async handleVoiceStateUpdate(oldState: VoiceState, newState: VoiceState) {
+    if (!this.autoCompleteEnabled) return;
+
+    // Check if someone left a voice channel
+    if (!oldState.channelId || oldState.channelId === newState.channelId) return;
+
+    const channelId = oldState.channelId;
+    const guild = oldState.guild;
+
+    // Check if this channel has an active event
+    let eventIdToComplete: string | null = null;
+    for (const [eventId, trackedChannelId] of this.activeEventChannels) {
+      if (trackedChannelId === channelId) {
+        eventIdToComplete = eventId;
+        break;
+      }
+    }
+
+    if (!eventIdToComplete) return;
+
+    // Check if voice channel is now empty (excluding bots)
+    try {
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel || !channel.isVoiceBased()) return;
+
+      const members = channel.members;
+      const humanMembers = members.filter((m) => !m.user.bot);
+
+      if (humanMembers.size === 0) {
+        console.log(`[Events] Voice channel ${channel.name} is empty, completing event ${eventIdToComplete}`);
+
+        // Fetch and complete the event
+        const event = await guild.scheduledEvents.fetch(eventIdToComplete);
+        if (event && event.status === GuildScheduledEventStatus.Active) {
+          await event.setStatus(GuildScheduledEventStatus.Completed);
+          console.log(`[Events] Event auto-completed: ${event.name} (${event.id})`);
+        }
+
+        // Clean up tracking
+        this.activeEventChannels.delete(eventIdToComplete);
+      }
+    } catch (error) {
+      console.error(`[Events] Error checking voice channel for auto-complete:`, error);
     }
   }
 
@@ -210,6 +298,15 @@ export class EventManager {
    * Trigger actions when event starts
    */
   private async triggerEventStart(event: GuildScheduledEvent) {
+    // Track voice channel for auto-complete
+    if (this.autoCompleteEnabled &&
+        (event.entityType === GuildScheduledEventEntityType.Voice ||
+         event.entityType === GuildScheduledEventEntityType.StageInstance)) {
+      if (event.channelId) {
+        this.activeEventChannels.set(event.id, event.channelId);
+      }
+    }
+
     const action = this.getEventAction(event.id);
     if (!action) {
       console.log(`[Events] No action registered for event ${event.id}`);
@@ -263,6 +360,9 @@ export class EventManager {
    * Trigger actions when event ends
    */
   private async triggerEventEnd(event: GuildScheduledEvent) {
+    // Clean up voice channel tracking
+    this.activeEventChannels.delete(event.id);
+
     const action = this.getEventAction(event.id);
     if (!action) {
       return;
@@ -279,6 +379,9 @@ export class EventManager {
    * Handle event cancellation
    */
   private async triggerEventCancel(event: GuildScheduledEvent) {
+    // Clean up voice channel tracking
+    this.activeEventChannels.delete(event.id);
+
     const action = this.getEventAction(event.id);
     if (!action) {
       return;
@@ -291,6 +394,36 @@ export class EventManager {
 
     // Clean up action
     this.unregisterEventAction(event.id);
+  }
+
+  /**
+   * Enable/disable auto-start for scheduled events
+   */
+  setAutoStart(enabled: boolean): void {
+    this.autoStartEnabled = enabled;
+    console.log(`[Events] Auto-start ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Enable/disable auto-complete for voice events
+   */
+  setAutoComplete(enabled: boolean): void {
+    this.autoCompleteEnabled = enabled;
+    console.log(`[Events] Auto-complete ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Get auto-start status
+   */
+  isAutoStartEnabled(): boolean {
+    return this.autoStartEnabled;
+  }
+
+  /**
+   * Get auto-complete status
+   */
+  isAutoCompleteEnabled(): boolean {
+    return this.autoCompleteEnabled;
   }
 
   /**

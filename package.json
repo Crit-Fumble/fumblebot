@@ -80,7 +80,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "@auth/express": "^0.12.1",
-    "@crit-fumble/core": "^10.11.0",
+    "@crit-fumble/core": "^10.14.0",
     "@crit-fumble/core-fumblebot": "^0.4.0",
     "@crit-fumble/worldanvil": "^3.0.0",
     "@deepgram/sdk": "^4.11.2",
@@ -89,6 +89,7 @@
     "@modelcontextprotocol/sdk": "^1.24.3",
     "@prisma/adapter-pg": "^7.0.1",
     "@prisma/client": "^7.0.0",
+    "chrono-node": "^2.9.0",
     "cookie-parser": "^1.4.7",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.5",

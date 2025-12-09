@@ -17,6 +17,11 @@ import { voiceCommands, voiceHandler } from './slash/voice.js'
 import { settingsCommands, settingsHandler } from './slash/settings.js'
 import { characterCommands, characterHandler } from './slash/character.js'
 import { icCommands, icHandler } from './slash/ic.js'
+import { timestampCommands, timestampHandler } from './slash/timestamp.js'
+import { aiGenerateCommands, aiGenerateHandler } from './slash/ai-generate.js'
+import { eventCommands, eventHandler } from './slash/event.js'
+import { audioCommands, audioHandler } from './slash/audio.js'
+import { adventureCommands, adventureHandler } from './slash/adventure.js'
 
 export class CommandRegistry {
   private slashCommands: Map<string, SlashCommandBuilder | SlashCommandOptionsOnlyBuilder | SlashCommandSubcommandsOnlyBuilder> = new Map()
@@ -33,6 +38,11 @@ export class CommandRegistry {
     this.registerSlashCommands(settingsCommands, settingsHandler)
     this.registerSlashCommands(characterCommands, characterHandler)
     this.registerSlashCommands(icCommands, icHandler)
+    this.registerSlashCommands(timestampCommands, timestampHandler)
+    this.registerSlashCommands(aiGenerateCommands, aiGenerateHandler)
+    this.registerSlashCommands(eventCommands, eventHandler)
+    this.registerSlashCommands(audioCommands, audioHandler)
+    this.registerSlashCommands(adventureCommands, adventureHandler)
   }
 
   private registerSlashCommands(

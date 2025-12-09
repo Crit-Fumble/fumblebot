@@ -346,11 +346,11 @@ export const aiTools: Tool[] = [
   },
 ];
 
-/** Container (adventure terminal) tool definitions */
-export const containerTools: Tool[] = [
+/** Adventure (MUD-style text adventure) tool definitions */
+export const adventureTools: Tool[] = [
   {
-    name: 'container_start',
-    description: 'Start an adventure terminal container for a guild/channel. Required before executing commands.',
+    name: 'adventure_create',
+    description: 'Create a new MUD-style text adventure session in a channel. Use when players want to start a text-based adventure game.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -362,91 +362,194 @@ export const containerTools: Tool[] = [
           type: 'string',
           description: 'Discord channel ID',
         },
-        userId: {
+        name: {
           type: 'string',
-          description: 'Discord user ID',
+          description: 'Name of the adventure',
         },
-        userName: {
+        description: {
           type: 'string',
-          description: 'Username for container prompt',
+          description: 'Description of the adventure scenario',
         },
       },
-      required: ['guildId', 'channelId', 'userId'],
+      required: ['guildId', 'channelId', 'name'],
     },
   },
   {
-    name: 'container_stop',
-    description: 'Stop a running container for a guild/channel.',
+    name: 'adventure_join',
+    description: 'Join an existing adventure session as a player, DM, or bot.',
     inputSchema: {
       type: 'object',
       properties: {
-        guildId: {
+        adventureId: {
           type: 'string',
-          description: 'Discord guild ID',
+          description: 'Adventure ID to join',
         },
-        channelId: {
+        playerId: {
           type: 'string',
-          description: 'Discord channel ID',
+          description: 'Discord user ID of the player',
         },
-        userId: {
+        playerName: {
           type: 'string',
-          description: 'Discord user ID',
+          description: 'Character or display name for the player',
+        },
+        role: {
+          type: 'string',
+          description: 'Role in the adventure',
+          enum: ['player', 'dm', 'bot'],
+          default: 'player',
         },
       },
-      required: ['guildId', 'channelId', 'userId'],
+      required: ['adventureId', 'playerId', 'playerName'],
     },
   },
   {
-    name: 'container_status',
-    description: 'Get status of a container for a guild/channel.',
+    name: 'adventure_action',
+    description: 'Send an action in the adventure (e.g., "opens the door carefully"). Use for player actions.',
     inputSchema: {
       type: 'object',
       properties: {
-        guildId: {
+        adventureId: {
           type: 'string',
-          description: 'Discord guild ID',
+          description: 'Adventure ID',
         },
-        channelId: {
+        playerId: {
           type: 'string',
-          description: 'Discord channel ID',
+          description: 'Player sending the action',
         },
-        userId: {
+        content: {
           type: 'string',
-          description: 'Discord user ID',
+          description: 'The action to perform',
         },
       },
-      required: ['guildId', 'channelId', 'userId'],
+      required: ['adventureId', 'playerId', 'content'],
     },
   },
   {
-    name: 'container_exec',
-    description: 'Execute a command in a container and get output. Useful for installing games/mods or running shell commands.',
+    name: 'adventure_say',
+    description: 'Send dialogue in the adventure (e.g., "Hello there!"). Use when characters speak.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        adventureId: {
+          type: 'string',
+          description: 'Adventure ID',
+        },
+        playerId: {
+          type: 'string',
+          description: 'Player speaking',
+        },
+        content: {
+          type: 'string',
+          description: 'What to say',
+        },
+      },
+      required: ['adventureId', 'playerId', 'content'],
+    },
+  },
+  {
+    name: 'adventure_emote',
+    description: 'Send an emote in the adventure (e.g., "smiles warmly"). Use for expressing emotions or actions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        adventureId: {
+          type: 'string',
+          description: 'Adventure ID',
+        },
+        playerId: {
+          type: 'string',
+          description: 'Player emoting',
+        },
+        content: {
+          type: 'string',
+          description: 'The emote/expression',
+        },
+      },
+      required: ['adventureId', 'playerId', 'content'],
+    },
+  },
+  {
+    name: 'adventure_narrative',
+    description: 'Send narrative/description text (DM/bot only). Use for setting scenes or describing events.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        adventureId: {
+          type: 'string',
+          description: 'Adventure ID',
+        },
+        playerId: {
+          type: 'string',
+          description: 'DM or bot sending narrative',
+        },
+        content: {
+          type: 'string',
+          description: 'Narrative text',
+        },
+      },
+      required: ['adventureId', 'playerId', 'content'],
+    },
+  },
+  {
+    name: 'adventure_status',
+    description: 'Get status of an adventure by channel or ID.',
     inputSchema: {
       type: 'object',
       properties: {
         guildId: {
           type: 'string',
-          description: 'Discord guild ID',
+          description: 'Discord guild ID (if looking up by channel)',
         },
         channelId: {
           type: 'string',
-          description: 'Discord channel ID',
+          description: 'Discord channel ID (if looking up by channel)',
         },
-        userId: {
+        adventureId: {
           type: 'string',
-          description: 'Discord user ID',
+          description: 'Adventure ID (if looking up directly)',
         },
-        command: {
+      },
+    },
+  },
+  {
+    name: 'adventure_history',
+    description: 'Get recent message history from an adventure session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        adventureId: {
           type: 'string',
-          description: 'Shell command to execute',
+          description: 'Adventure ID',
         },
-        timeout: {
+        limit: {
           type: 'number',
-          description: 'Command timeout in milliseconds',
-          default: 30000,
+          description: 'Number of messages to retrieve',
+          default: 20,
         },
       },
-      required: ['guildId', 'channelId', 'userId', 'command'],
+      required: ['adventureId'],
+    },
+  },
+  {
+    name: 'adventure_end',
+    description: 'End an adventure session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        adventureId: {
+          type: 'string',
+          description: 'Adventure ID to end',
+        },
+      },
+      required: ['adventureId'],
+    },
+  },
+  {
+    name: 'adventure_list',
+    description: 'List all active adventure sessions.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
     },
   },
 ];
@@ -1154,7 +1257,7 @@ export function getAllTools(): Tool[] {
     ...foundryTools,
     ...foundryContainerTools,
     ...aiTools,
-    ...containerTools,
+    ...adventureTools,
     ...fumbleTools,
     ...voiceTools,
     ...kbTools,

@@ -18,6 +18,21 @@ import type {
   AIGenerateEncounterRequest,
   AIGenerateImageRequest,
   AIGenerateImageResponse,
+  AIWriteRequest,
+  AIWriteResponse,
+  TimestampRequest,
+  TimestampResponse,
+  EventCloneRequest,
+  EventCloneResponse,
+  EventListResponse,
+  AudioPlayRequest,
+  AudioPlayResponse,
+  AudioStatusResponse,
+  AudioQueueResponse,
+  AudioQueueItem,
+  Character,
+  CharacterCreateRequest,
+  CharacterUpdateRequest,
   VTTPlatform,
   VTTAccount,
   VTTGameLink,
@@ -256,6 +271,252 @@ export class FumbleBotClient {
       ...options,
       timeout: options?.timeout ?? 120000, // Image generation takes longer
     });
+  }
+
+  /**
+   * Generate text content with style options
+   */
+  async write(
+    request: AIWriteRequest,
+    options?: RequestOptions
+  ): Promise<AIWriteResponse> {
+    return this.post<AIWriteResponse>('/ai/write', request, {
+      ...options,
+      timeout: options?.timeout ?? 60000,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Timestamp Conversion
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Convert natural language date to Discord timestamp formats
+   */
+  async parseTimestamp(
+    request: TimestampRequest,
+    options?: RequestOptions
+  ): Promise<TimestampResponse> {
+    return this.post<TimestampResponse>('/timestamp', request, options);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Event Management
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Clone a scheduled event with a new date
+   */
+  async cloneEvent(
+    request: EventCloneRequest,
+    options?: RequestOptions
+  ): Promise<EventCloneResponse> {
+    return this.post<EventCloneResponse>('/events/clone', request, options);
+  }
+
+  /**
+   * List scheduled events for a guild
+   */
+  async listEvents(
+    guildId: string,
+    options?: RequestOptions
+  ): Promise<EventListResponse> {
+    return this.get<EventListResponse>(`/events?guildId=${guildId}`, options);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Audio Playback
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Play audio in a voice channel
+   */
+  async audioPlay(
+    request: AudioPlayRequest,
+    options?: RequestOptions
+  ): Promise<AudioPlayResponse> {
+    return this.post<AudioPlayResponse>('/audio/play', request, options);
+  }
+
+  /**
+   * Pause audio playback
+   */
+  async audioPause(
+    guildId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; paused: boolean }> {
+    return this.post('/audio/pause', { guildId }, options);
+  }
+
+  /**
+   * Resume audio playback
+   */
+  async audioResume(
+    guildId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; resumed: boolean }> {
+    return this.post('/audio/resume', { guildId }, options);
+  }
+
+  /**
+   * Stop audio playback and clear queue
+   */
+  async audioStop(
+    guildId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean }> {
+    return this.post('/audio/stop', { guildId }, options);
+  }
+
+  /**
+   * Skip current audio track
+   */
+  async audioSkip(
+    guildId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; skipped: AudioQueueItem | null }> {
+    return this.post('/audio/skip', { guildId }, options);
+  }
+
+  /**
+   * Get audio playback status
+   */
+  async audioStatus(
+    guildId: string,
+    options?: RequestOptions
+  ): Promise<AudioStatusResponse> {
+    return this.get<AudioStatusResponse>(`/audio/status?guildId=${guildId}`, options);
+  }
+
+  /**
+   * Get audio queue
+   */
+  async audioQueue(
+    guildId: string,
+    options?: RequestOptions
+  ): Promise<AudioQueueResponse> {
+    return this.get<AudioQueueResponse>(`/audio/queue?guildId=${guildId}`, options);
+  }
+
+  /**
+   * Set audio volume
+   */
+  async audioSetVolume(
+    guildId: string,
+    volume: number,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; volume: number }> {
+    return this.post('/audio/volume', { guildId, volume }, options);
+  }
+
+  /**
+   * Clear audio queue (without stopping current track)
+   */
+  async audioClearQueue(
+    guildId: string,
+    options?: RequestOptions
+  ): Promise<{ success: boolean; cleared: number }> {
+    return this.post('/audio/queue/clear', { guildId }, options);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Characters (Roleplay System)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Create a character
+   */
+  async createCharacter(
+    request: CharacterCreateRequest,
+    options?: RequestOptions
+  ): Promise<Character> {
+    return this.post<Character>('/characters', request, options);
+  }
+
+  /**
+   * Get a user's characters in a guild
+   */
+  async getCharacters(
+    userId: string,
+    guildId: string,
+    options?: RequestOptions
+  ): Promise<Character[]> {
+    return this.get<Character[]>(`/characters?userId=${userId}&guildId=${guildId}`, options);
+  }
+
+  /**
+   * Get a character by ID
+   */
+  async getCharacter(
+    characterId: string,
+    options?: RequestOptions
+  ): Promise<Character | null> {
+    return this.get<Character | null>(`/characters/${characterId}`, options);
+  }
+
+  /**
+   * Update a character
+   */
+  async updateCharacter(
+    characterId: string,
+    request: CharacterUpdateRequest,
+    options?: RequestOptions
+  ): Promise<Character> {
+    return this.put<Character>(`/characters/${characterId}`, request, options);
+  }
+
+  /**
+   * Delete a character
+   */
+  async deleteCharacter(
+    characterId: string,
+    options?: RequestOptions
+  ): Promise<void> {
+    return this.delete(`/characters/${characterId}`, options);
+  }
+
+  /**
+   * Get active character for a user in a channel
+   */
+  async getActiveCharacter(
+    userId: string,
+    guildId: string,
+    channelId: string,
+    threadId?: string,
+    options?: RequestOptions
+  ): Promise<Character | null> {
+    const query = new URLSearchParams({ userId, guildId, channelId });
+    if (threadId) query.set('threadId', threadId);
+    return this.get<Character | null>(`/characters/active?${query}`, options);
+  }
+
+  /**
+   * Set a character as active in a channel
+   */
+  async setActiveCharacter(
+    characterId: string,
+    userId: string,
+    guildId: string,
+    channelId: string,
+    threadId?: string,
+    options?: RequestOptions
+  ): Promise<Character> {
+    return this.post<Character>(`/characters/${characterId}/activate`, {
+      userId,
+      guildId,
+      channelId,
+      threadId,
+    }, options);
+  }
+
+  /**
+   * Deactivate a character
+   */
+  async deactivateCharacter(
+    characterId: string,
+    options?: RequestOptions
+  ): Promise<Character> {
+    return this.post<Character>(`/characters/${characterId}/deactivate`, {}, options);
   }
 
   // ---------------------------------------------------------------------------

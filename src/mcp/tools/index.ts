@@ -7,7 +7,7 @@ export {
   foundryTools,
   foundryContainerTools,
   aiTools,
-  containerTools,
+  adventureTools,
   fumbleTools,
   kbTools,
   webTools,

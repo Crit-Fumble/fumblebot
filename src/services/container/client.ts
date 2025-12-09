@@ -1,22 +1,48 @@
 /**
  * Container Service Client
  *
+ * @deprecated Use adventure-service.ts for MUD-style text adventures.
+ * This client uses the legacy Container API which has been replaced by the Adventure API.
+ *
  * Client for interacting with Core's container API.
  * Manages adventure terminal environments for Discord Activities.
- *
- * Now uses @crit-fumble/core SDK instead of direct HTTP calls.
  *
  * @see https://core.crit-fumble.com README for API documentation
  */
 
-import type {
-  ContainerStartResponse,
-  ContainerStopResponse,
-  ContainerStatusResponse,
-  ContainerExecResponse,
-} from '@crit-fumble/core';
 import { getCoreClient } from '../../lib/core-client.js';
 import { getCoreProxyConfig } from '../../config.js';
+
+// Local response types (Container API has changed in Core SDK v10.13)
+export interface ContainerStartResponse {
+  containerId: string;
+  status: string;
+  port: number;
+  createdAt: string;
+  wsUrl?: string;
+}
+
+export interface ContainerStopResponse {
+  success: boolean;
+  message?: string;
+}
+
+export interface ContainerStatusResponse {
+  exists: boolean;
+  containerId?: string;
+  status?: string;
+  port?: number;
+  createdAt?: string;
+  uptime?: number;
+}
+
+export interface ContainerExecResponse {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  executionTime?: number;
+}
 
 export interface UserContext {
   userId: string;
@@ -61,79 +87,51 @@ export class ContainerClient {
   /**
    * Start a container for guild/channel
    *
+   * @deprecated Use adventure-service.ts instead. Container API has changed.
    * Creates a new adventure terminal environment scoped to the guild+channel.
    * If a container already exists for this scope, it returns the existing one.
    */
-  async start(context: UserContext): Promise<ContainerStartResponse> {
-    console.log(`[Container] Starting container for guild ${context.guildId}, channel ${context.channelId}`);
-
-    const coreClient = getCoreClient();
-    const response = await coreClient.container.start({
-      guildId: context.guildId,
-      channelId: context.channelId,
-    });
-
-    console.log(`[Container] Started: ${response.containerId} on port ${response.port}`);
-    return response;
+  async start(_context: UserContext): Promise<ContainerStartResponse> {
+    // The old Container API is no longer available in Core SDK v10.13+
+    // Use the new Adventure API via adventure-service.ts instead
+    throw new Error(
+      'Container.start is deprecated. Use adventure-service.ts for MUD-style text adventures.'
+    );
   }
 
   /**
    * Stop a container
+   * @deprecated Use adventure-service.ts instead. Container API has changed.
    */
-  async stop(context: UserContext): Promise<ContainerStopResponse> {
-    console.log(`[Container] Stopping container for guild ${context.guildId}, channel ${context.channelId}`);
-
-    const coreClient = getCoreClient();
-    const response = await coreClient.container.stop(context.guildId, context.channelId);
-
-    console.log(`[Container] Stopped`);
-    return response;
+  async stop(_context: UserContext): Promise<ContainerStopResponse> {
+    throw new Error(
+      'Container.stop is deprecated. Use adventure-service.ts for MUD-style text adventures.'
+    );
   }
 
   /**
    * Get container status
+   * @deprecated Use adventure-service.ts instead. Container API has changed.
    */
-  async status(context: UserContext): Promise<ContainerStatusResponse> {
-    const coreClient = getCoreClient();
-    return coreClient.container.status(context.guildId, context.channelId);
+  async status(_context: UserContext): Promise<ContainerStatusResponse> {
+    throw new Error(
+      'Container.status is deprecated. Use adventure-service.ts for MUD-style text adventures.'
+    );
   }
 
   /**
    * Execute a command in the container
    *
+   * @deprecated Use adventure-service.ts instead. Container API has changed.
    * Runs a command and returns the output. Useful for MCP tool integration.
-   *
-   * @example
-   * ```typescript
-   * const result = await client.exec(context, {
-   *   command: 'ls -la',
-   *   timeout: 5000,
-   * });
-   * console.log(result.stdout);
-   * ```
    */
   async exec(
-    context: UserContext,
-    options: { command: string; timeout?: number }
+    _context: UserContext,
+    _options: { command: string; timeout?: number }
   ): Promise<ContainerExecResponse> {
-    console.log(`[Container] Executing: ${options.command}`);
-
-    const coreClient = getCoreClient();
-    const response = await coreClient.container.exec({
-      guildId: context.guildId,
-      channelId: context.channelId,
-      command: options.command,
-      timeout: options.timeout,
-    });
-
-    if (!response.success) {
-      console.warn(`[Container] Command failed with exit code ${response.exitCode}`);
-      if (response.stderr) {
-        console.warn(`[Container] stderr: ${response.stderr}`);
-      }
-    }
-
-    return response;
+    throw new Error(
+      'Container.exec is deprecated. Use adventure-service.ts for MUD-style text adventures.'
+    );
   }
 
   /**
