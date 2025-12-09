@@ -18,6 +18,7 @@ import type { DiscordConfig } from '../../models/types.js'
 import { CommandRegistry } from './commands/registry.js'
 import { handleInteraction } from './handlers/interaction.js'
 import { handleMessage } from './handlers/message.js'
+import webhookService from './webhook-service.js'
 
 export class FumbleBotClient {
   public client: Client
@@ -63,6 +64,10 @@ export class FumbleBotClient {
     this.client.once(Events.ClientReady, (readyClient) => {
       console.log(`[FumbleBot] Logged in as ${readyClient.user.tag}`)
       this.isReady = true
+
+      // Initialize webhook service with client
+      webhookService.initialize(this.client)
+      console.log('[FumbleBot] Webhook service initialized')
 
       // Set bot presence
       readyClient.user.setPresence({
