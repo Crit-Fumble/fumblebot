@@ -12,6 +12,7 @@ import {
 } from 'discord.js';
 import type { FumbleBotClient } from '../../client.js';
 import { AIService } from '../../../ai/service.js';
+import { isAdmin } from '../../../../config.js';
 
 export const aiGenerateCommands = [
   // /write command
@@ -102,6 +103,15 @@ export async function aiGenerateHandler(
   interaction: ChatInputCommandInteraction,
   _bot: FumbleBotClient
 ): Promise<void> {
+  // Admin-only check - these commands use expensive AI APIs
+  if (!isAdmin(interaction.user.id)) {
+    await interaction.reply({
+      content: 'This command is only available to server admins.',
+      ephemeral: true,
+    });
+    return;
+  }
+
   const command = interaction.commandName;
 
   if (command === 'write') {

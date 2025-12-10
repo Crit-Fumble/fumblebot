@@ -18,6 +18,7 @@ import type {
   VoiceConfig,
   SecurityConfig,
   ServerConfig,
+  LoggingConfig,
 } from './models/types.js'
 
 // =============================================================================
@@ -196,6 +197,23 @@ export function loadServerConfig(): ServerConfig {
   }
 }
 
+/**
+ * Load logging/monitoring configuration
+ */
+export function loadLoggingConfig(): LoggingConfig {
+  const nodeEnv = getEnvOptional('NODE_ENV', 'development')
+  const formatDefault = nodeEnv === 'production' ? 'json' : 'pretty'
+  const format = getEnvOptional('LOG_FORMAT', formatDefault) as 'json' | 'pretty'
+
+  return {
+    level: getEnvOptional('LOG_LEVEL', 'info'),
+    format: format === 'pretty' ? 'pretty' : 'json',
+    opsWebhookUrl: getEnvOptional('OPS_WEBHOOK_URL') || undefined,
+    errorThreshold: getEnvInt('OPS_ERROR_THRESHOLD', 3),
+    flushIntervalMs: getEnvInt('OPS_FLUSH_INTERVAL_MS', 60000),
+  }
+}
+
 // =============================================================================
 // Convenience Getters (cached singletons)
 // =============================================================================
@@ -204,6 +222,7 @@ let _coreProxyConfig: CoreProxyConfig | undefined | null = null
 let _voiceConfig: VoiceConfig | null = null
 let _securityConfig: SecurityConfig | null = null
 let _serverConfig: ServerConfig | null = null
+let _loggingConfig: LoggingConfig | null = null
 
 /**
  * Get Core proxy config (cached)
@@ -243,6 +262,16 @@ export function getServerConfig(): ServerConfig {
     _serverConfig = loadServerConfig()
   }
   return _serverConfig
+}
+
+/**
+ * Get logging config (cached)
+ */
+export function getLoggingConfig(): LoggingConfig {
+  if (_loggingConfig === null) {
+    _loggingConfig = loadLoggingConfig()
+  }
+  return _loggingConfig
 }
 
 /**

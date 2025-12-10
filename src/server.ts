@@ -103,6 +103,7 @@ import {
 } from './config.js';
 import { getCoreClient } from './lib/core-client.js';
 import { initializePersonaSystem } from './services/persona/index.js';
+import { logger, initializeLogging, shutdownLogging } from './services/logging/index.js';
 
 // Re-export types
 export type { Platform, PlatformContext, PlatformServerConfig, ActivityServerConfig } from './models/types.js';
@@ -123,7 +124,7 @@ function initializeAIService(): void {
       });
     }
   } catch {
-    console.warn('[Platform] Anthropic API key not configured - Anthropic AI unavailable');
+    logger.warn('Anthropic API key not configured - Anthropic AI unavailable', { service: 'Platform' });
   }
 
   try {
@@ -136,7 +137,7 @@ function initializeAIService(): void {
       });
     }
   } catch {
-    console.warn('[Platform] OpenAI API key not configured - OpenAI unavailable');
+    logger.warn('OpenAI API key not configured - OpenAI unavailable', { service: 'Platform' });
   }
 
   // Initialize DigitalOcean Gradient AI (Llama, Mistral, and partner models)
@@ -148,7 +149,7 @@ function initializeAIService(): void {
       defaultModel: gradientConfig.defaultModel,
     });
   } else {
-    console.warn('[Platform] Gradient API key not configured - Gradient AI unavailable');
+    logger.warn('Gradient API key not configured - Gradient AI unavailable', { service: 'Platform' });
   }
 }
 
@@ -248,7 +249,7 @@ export class PlatformServer {
         if (handler) {
           this.app[route.method](route.path, handler);
         } else {
-          console.warn(`[Platform] Handler not found: ${route.handler}`);
+          logger.warn(`Handler not found: ${route.handler}`, { service: 'Platform' });
         }
       }
     }
@@ -400,8 +401,8 @@ export class PlatformServer {
   start(): Promise<void> {
     return new Promise((resolve) => {
       this.server = this.app.listen(this.config.port, this.config.host || '0.0.0.0', () => {
-        console.log(`[Platform] Server running on ${this.config.publicUrl}`);
-        console.log(`[Platform] Local: http://localhost:${this.config.port}`);
+        logger.info(`Server running on ${this.config.publicUrl}`, { service: 'Platform', port: this.config.port });
+        logger.info(`Local: http://localhost:${this.config.port}`, { service: 'Platform' });
         resolve();
       });
     });
@@ -440,7 +441,10 @@ if (isMainModule) {
     publicUrl: serverConfig.publicUrl,
   };
 
-  console.log('[Platform] Starting server on port', config.port);
+  // Initialize logging services first
+  initializeLogging();
+
+  logger.info('Starting server', { service: 'Platform', port: config.port });
 
   // Initialize AI service with API keys
   initializeAIService();
@@ -453,11 +457,11 @@ if (isMainModule) {
   try {
     discordConfig = loadDiscordConfig();
   } catch {
-    console.warn('[Platform] Discord config not available - Discord bot disabled');
+    logger.warn('Discord config not available - Discord bot disabled', { service: 'Platform' });
   }
 
   server.start().then(async () => {
-    console.log('[Platform] Ready at http://localhost:' + config.port + '/discord/activity');
+    logger.info('Ready at http://localhost:' + config.port + '/discord/activity', { service: 'Platform' });
 
     // Start Discord bot
     if (discordConfig?.token && discordConfig?.clientId) {
@@ -472,30 +476,31 @@ if (isMainModule) {
         await discordBot.start();
         setFumbleBotClient(discordBot); // Make bot available to voice API
         voiceAssistant.setDiscordClient(discordBot.client); // Enable voice state tracking
-        console.log('[Platform] Discord bot started');
+        logger.info('Discord bot started', { service: 'Platform' });
 
         // Initialize persona system (seeds default persona and skills)
         try {
           await initializePersonaSystem();
-          console.log('[Platform] Persona system initialized');
+          logger.info('Persona system initialized', { service: 'Platform' });
         } catch (err) {
-          console.error('[Platform] Failed to initialize persona system:', err);
+          logger.error('Failed to initialize persona system', { service: 'Platform' }, err instanceof Error ? err : undefined);
           // Continue running - persona features will be limited
         }
       } catch (err) {
-        console.error('[Platform] Failed to start Discord bot:', err);
+        logger.error('Failed to start Discord bot', { service: 'Platform' }, err instanceof Error ? err : undefined);
         // Continue running API server even if bot fails
       }
     } else {
-      console.warn('[Platform] Discord credentials not configured - Discord bot disabled');
+      logger.warn('Discord credentials not configured - Discord bot disabled', { service: 'Platform' });
     }
   }).catch((err) => {
-    console.error('[Platform] Failed to start:', err);
+    logger.error('Failed to start', { service: 'Platform' }, err instanceof Error ? err : undefined);
     process.exit(1);
   });
 
   process.on('SIGINT', async () => {
-    console.log('\n[Platform] Shutting down...');
+    logger.info('Shutting down...', { service: 'Platform' });
+    await shutdownLogging();
     setFumbleBotClient(null);
     if (discordBot) await discordBot.stop();
     await server.stop();
@@ -503,7 +508,8 @@ if (isMainModule) {
   });
 
   process.on('SIGTERM', async () => {
-    console.log('\n[Platform] Shutting down...');
+    logger.info('Shutting down...', { service: 'Platform' });
+    await shutdownLogging();
     setFumbleBotClient(null);
     if (discordBot) await discordBot.stop();
     await server.stop();

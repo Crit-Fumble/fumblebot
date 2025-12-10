@@ -19,6 +19,7 @@ import {
 import { joinVoiceChannel, getVoiceConnection } from '@discordjs/voice';
 import type { FumbleBotClient } from '../../client.js';
 import audioPlayer from '../../voice/audio-player.js';
+import { isAdmin } from '../../../../config.js';
 
 // Maximum file size: 25MB
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
@@ -81,6 +82,15 @@ export async function audioHandler(
   interaction: ChatInputCommandInteraction,
   _bot: FumbleBotClient
 ): Promise<void> {
+  // Admin-only check - untested feature
+  if (!isAdmin(interaction.user.id)) {
+    await interaction.reply({
+      content: 'This command is only available to server admins.',
+      ephemeral: true,
+    });
+    return;
+  }
+
   if (!interaction.guild) {
     await interaction.reply({
       content: '❌ This command can only be used in a server.',

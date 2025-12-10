@@ -165,6 +165,144 @@ export const foundryContainerTools: Tool[] = [
       required: ['containerId'],
     },
   },
+  // World Management (v10.14.1+)
+  {
+    name: 'foundry_list_worlds',
+    description:
+      'List all worlds in a FoundryVTT container. Shows world names, systems, and basic info.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        containerId: {
+          type: 'string',
+          description: 'Container ID',
+        },
+      },
+      required: ['containerId'],
+    },
+  },
+  {
+    name: 'foundry_get_world',
+    description:
+      'Get detailed information about a specific world including actors, items, scenes, and journals count.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        containerId: {
+          type: 'string',
+          description: 'Container ID',
+        },
+        worldId: {
+          type: 'string',
+          description: 'World ID (folder name)',
+        },
+      },
+      required: ['containerId', 'worldId'],
+    },
+  },
+  {
+    name: 'foundry_backup_world',
+    description:
+      'Create a backup of a Foundry world. Use before major changes or between sessions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        containerId: {
+          type: 'string',
+          description: 'Container ID',
+        },
+        worldId: {
+          type: 'string',
+          description: 'World ID to backup',
+        },
+      },
+      required: ['containerId', 'worldId'],
+    },
+  },
+  // Module Management (v10.14.1+)
+  {
+    name: 'foundry_list_modules',
+    description:
+      'List all installed modules in a FoundryVTT container. Shows module names, versions, and active status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        containerId: {
+          type: 'string',
+          description: 'Container ID',
+        },
+      },
+      required: ['containerId'],
+    },
+  },
+  {
+    name: 'foundry_install_module',
+    description:
+      'Install a Foundry module from a manifest URL. Gets the module from the Foundry package repository.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        containerId: {
+          type: 'string',
+          description: 'Container ID',
+        },
+        manifestUrl: {
+          type: 'string',
+          description: 'Module manifest URL (e.g., from Foundry Hub)',
+        },
+      },
+      required: ['containerId', 'manifestUrl'],
+    },
+  },
+  {
+    name: 'foundry_uninstall_module',
+    description: 'Uninstall a module from the FoundryVTT container.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        containerId: {
+          type: 'string',
+          description: 'Container ID',
+        },
+        moduleId: {
+          type: 'string',
+          description: 'Module ID to uninstall',
+        },
+      },
+      required: ['containerId', 'moduleId'],
+    },
+  },
+  // System & Settings (v10.14.1+)
+  {
+    name: 'foundry_list_systems',
+    description:
+      'List all installed game systems in the FoundryVTT container.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        containerId: {
+          type: 'string',
+          description: 'Container ID',
+        },
+      },
+      required: ['containerId'],
+    },
+  },
+  {
+    name: 'foundry_list_users',
+    description:
+      'List all users configured in the FoundryVTT container. Shows usernames and roles.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        containerId: {
+          type: 'string',
+          description: 'Container ID',
+        },
+      },
+      required: ['containerId'],
+    },
+  },
 ];
 
 /** AI tool definitions (Anthropic & OpenAI) */

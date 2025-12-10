@@ -22,6 +22,7 @@ import { aiGenerateCommands, aiGenerateHandler } from './slash/ai-generate.js'
 import { eventCommands, eventHandler } from './slash/event.js'
 import { audioCommands, audioHandler } from './slash/audio.js'
 import { adventureCommands, adventureHandler } from './slash/adventure.js'
+import { helpCommands, helpHandler } from './slash/help.js'
 
 export class CommandRegistry {
   private slashCommands: Map<string, SlashCommandBuilder | SlashCommandOptionsOnlyBuilder | SlashCommandSubcommandsOnlyBuilder> = new Map()
@@ -43,6 +44,7 @@ export class CommandRegistry {
     this.registerSlashCommands(eventCommands, eventHandler)
     this.registerSlashCommands(audioCommands, audioHandler)
     this.registerSlashCommands(adventureCommands, adventureHandler)
+    this.registerSlashCommands(helpCommands, helpHandler)
   }
 
   private registerSlashCommands(

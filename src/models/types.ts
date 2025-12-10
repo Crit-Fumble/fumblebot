@@ -113,6 +113,22 @@ export interface ServerConfig {
   isProduction: boolean;
 }
 
+/**
+ * Logging/monitoring configuration
+ */
+export interface LoggingConfig {
+  /** Log level: error, warn, info, debug (default: info) */
+  level: string;
+  /** Log format: json, pretty (default: json in production, pretty in development) */
+  format: 'json' | 'pretty';
+  /** Discord webhook URL for ops alerts */
+  opsWebhookUrl?: string;
+  /** Minimum errors before sending notification (default: 3) */
+  errorThreshold: number;
+  /** Error aggregation flush interval in ms (default: 60000) */
+  flushIntervalMs: number;
+}
+
 // =============================================================================
 // Discord Types
 // =============================================================================
